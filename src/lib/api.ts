@@ -295,6 +295,8 @@ export const fs = {
     `/api/fs/exists?path=${encodeURIComponent(path)}`
   ),
 
+  roots: () => fetchApi<{ home: string; roots: string[] }>('/api/fs/roots'),
+
   openExternal: (path: string, target: 'vscode' | 'cursor' | 'finder') =>
     fetchApi<{ success: boolean }>('/api/fs/open-external', {
       method: 'POST',
