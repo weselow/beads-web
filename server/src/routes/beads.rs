@@ -67,15 +67,24 @@ pub struct BeadsParams {
     pub path: String,
 }
 
-/// A dependency relationship in the JSONL file.
+/// A dependency relationship in the JSONL file (old format).
+///
+/// Old `bd` versions stored dependencies as:
+/// ```json
+/// "dependencies": [{"depends_on_id":"parent-1", "type":"parent-child"}]
+/// ```
 #[derive(Debug, Deserialize, Clone)]
-struct Dependency {
+struct LegacyDependency {
     depends_on_id: String,
     #[serde(rename = "type")]
     dep_type: String,
 }
 
 /// A single bead/issue from the JSONL file.
+///
+/// Supports both old and new `bd` CLI formats:
+/// - **Old**: `dependencies` as array of objects with `depends_on_id` and `type`
+/// - **New**: `parent` (string), `dependencies` as array of string IDs, `related` as array of strings
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Bead {
     pub id: String,
@@ -95,13 +104,13 @@ pub struct Bead {
     pub created_by: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "closedAt")]
     pub closed_at: Option<String>,
     #[serde(default)]
     pub close_reason: Option<String>,
     #[serde(default)]
     pub comments: Option<Vec<Comment>>,
-    #[serde(default)]
+    #[serde(default, alias = "parent")]
     pub parent_id: Option<String>,
     #[serde(default)]
     pub children: Option<Vec<String>>,
@@ -109,10 +118,50 @@ pub struct Bead {
     pub design_doc: Option<String>,
     #[serde(default)]
     pub deps: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, alias = "related")]
     pub relates_to: Option<Vec<String>>,
-    #[serde(default, skip_serializing)]
-    dependencies: Option<Vec<Dependency>>,
+    /// Raw dependencies field — accepts both old (array of objects) and new (array of strings) formats.
+    #[serde(default, skip_serializing, deserialize_with = "deserialize_dependencies")]
+    dependencies: Option<RawDependencies>,
+}
+
+/// Parsed dependencies in either old or new format.
+#[derive(Debug, Clone)]
+enum RawDependencies {
+    /// Old format: array of `{depends_on_id, type}` objects
+    Legacy(Vec<LegacyDependency>),
+    /// New format: flat array of string IDs (blocking deps)
+    StringIds(Vec<String>),
+}
+
+/// Custom deserializer that handles both old and new dependency formats.
+fn deserialize_dependencies<'de, D>(deserializer: D) -> Result<Option<RawDependencies>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    let arr = match value {
+        Some(serde_json::Value::Array(a)) => a,
+        Some(serde_json::Value::Null) | None => return Ok(None),
+        _ => return Err(serde::de::Error::custom("expected array or null for dependencies")),
+    };
+
+    if arr.is_empty() {
+        return Ok(None);
+    }
+
+    // Check first element to distinguish formats
+    if arr[0].is_string() {
+        // New format: ["id1", "id2"]
+        let ids: Vec<String> = serde_json::from_value(serde_json::Value::Array(arr))
+            .map_err(serde::de::Error::custom)?;
+        Ok(Some(RawDependencies::StringIds(ids)))
+    } else {
+        // Old format: [{depends_on_id, type}, ...]
+        let deps: Vec<LegacyDependency> = serde_json::from_value(serde_json::Value::Array(arr))
+            .map_err(serde::de::Error::custom)?;
+        Ok(Some(RawDependencies::Legacy(deps)))
+    }
 }
 
 /// A comment on a bead.
@@ -183,26 +232,65 @@ pub async fn read_beads(Query(params): Query<BeadsParams>) -> impl IntoResponse 
         }
     }
 
-    // Post-process: Transform dependencies into parent_id and children
+    // Post-process: Transform dependencies into parent_id, deps, relates_to, and children
     // Build a map of parent_id -> Vec<child_id>
     let mut parent_to_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
 
-    // First pass: Extract parent-child relationships from explicit dependencies
+    // First pass: Extract relationships from dependencies (both old and new format)
     for bead in &mut beads {
-        if let Some(deps) = &bead.dependencies {
-            for dep in deps {
-                if dep.dep_type == "parent-child" {
-                    // Set parent_id on this bead
-                    bead.parent_id = Some(dep.depends_on_id.clone());
-                    // Record this bead as a child of the parent
-                    parent_to_children
-                        .entry(dep.depends_on_id.clone())
-                        .or_default()
-                        .push(bead.id.clone());
+        if let Some(raw_deps) = bead.dependencies.take() {
+            match raw_deps {
+                RawDependencies::Legacy(legacy_deps) => {
+                    // Old format: extract parent-child, relates-to, and blocking deps
+                    let mut blocking = Vec::new();
+                    let mut related = Vec::new();
+                    for dep in &legacy_deps {
+                        match dep.dep_type.as_str() {
+                            "parent-child" => {
+                                bead.parent_id = Some(dep.depends_on_id.clone());
+                                parent_to_children
+                                    .entry(dep.depends_on_id.clone())
+                                    .or_default()
+                                    .push(bead.id.clone());
+                            }
+                            "relates-to" => {
+                                related.push(dep.depends_on_id.clone());
+                            }
+                            _ => {
+                                blocking.push(dep.depends_on_id.clone());
+                            }
+                        }
+                    }
+                    if !blocking.is_empty() && bead.deps.is_none() {
+                        bead.deps = Some(blocking);
+                    }
+                    if !related.is_empty() && bead.relates_to.is_none() {
+                        bead.relates_to = Some(related);
+                    }
+                }
+                RawDependencies::StringIds(ids) => {
+                    // New format: dependencies are blocking deps (parent comes from `parent` field)
+                    if !ids.is_empty() && bead.deps.is_none() {
+                        bead.deps = Some(ids);
+                    }
                 }
             }
         }
+
+        // Record parent-child from `parent` field (new format, already deserialized via alias)
+        if let Some(parent_id) = &bead.parent_id {
+            parent_to_children
+                .entry(parent_id.clone())
+                .or_default()
+                .push(bead.id.clone());
+        }
+    }
+
+    // Deduplicate parent_to_children entries (in case both old dependencies and parent field set)
+    for children in parent_to_children.values_mut() {
+        children.sort();
+        children.dedup();
     }
 
     // Second pass: Infer parent-child from ID patterns (e.g., "64n.1" -> parent "64n")
@@ -248,20 +336,6 @@ pub async fn read_beads(Query(params): Query<BeadsParams>) -> impl IntoResponse 
     for bead in &mut beads {
         if let Some(children) = parent_to_children.get(&bead.id) {
             bead.children = Some(children.clone());
-        }
-    }
-
-    // Fourth pass: Extract relates-to dependencies into relates_to field
-    for bead in &mut beads {
-        if let Some(deps) = &bead.dependencies {
-            let related: Vec<String> = deps
-                .iter()
-                .filter(|dep| dep.dep_type == "relates-to")
-                .map(|dep| dep.depends_on_id.clone())
-                .collect();
-            if !related.is_empty() {
-                bead.relates_to = Some(related);
-            }
         }
     }
 
@@ -553,16 +627,25 @@ pub fn recompute_epic_statuses(issues_path: &Path) -> Result<Vec<String>, String
     // parent_id -> Vec<child_id>
     let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
 
-    // First pass: Extract from explicit dependencies
-    for bead in &beads {
-        if let Some(deps) = &bead.dependencies {
-            for dep in deps {
+    // First pass: Extract from explicit dependencies and parent field
+    for bead in &mut beads {
+        if let Some(RawDependencies::Legacy(legacy_deps)) = bead.dependencies.take() {
+            for dep in &legacy_deps {
                 if dep.dep_type == "parent-child" {
+                    bead.parent_id = Some(dep.depends_on_id.clone());
                     parent_to_children
                         .entry(dep.depends_on_id.clone())
                         .or_default()
                         .push(bead.id.clone());
                 }
+            }
+        }
+
+        // Record parent-child from `parent` field (new format)
+        if let Some(parent_id) = &bead.parent_id {
+            let children = parent_to_children.entry(parent_id.clone()).or_default();
+            if !children.contains(&bead.id) {
+                children.push(bead.id.clone());
             }
         }
     }
@@ -805,117 +888,60 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bead_with_relates_to_dependencies() {
-        // Test that relates-to dependencies are deserialized from the dependencies array
-        let json = r#"{"id":"bead-a","title":"Bead A","status":"open","dependencies":[{"issue_id":"bead-a","depends_on_id":"bead-b","type":"relates-to","created_at":"2026-01-27T00:00:00Z","created_by":"user"},{"issue_id":"bead-a","depends_on_id":"bead-c","type":"relates-to","created_at":"2026-01-27T00:00:00Z","created_by":"user"}]}"#;
+    fn test_parse_old_format_dependencies() {
+        // Old format: dependencies as array of objects
+        let json = r#"{"id":"bead-a","title":"Bead A","status":"open","dependencies":[{"issue_id":"bead-a","depends_on_id":"bead-b","type":"relates-to","created_at":"2026-01-27T00:00:00Z","created_by":"user"},{"issue_id":"bead-a","depends_on_id":"bead-c","type":"parent-child","created_at":"2026-01-27T00:00:00Z","created_by":"user"}]}"#;
         let bead: Bead = serde_json::from_str(json).unwrap();
-        let deps = bead.dependencies.unwrap();
-        assert_eq!(deps.len(), 2);
-        assert_eq!(deps[0].dep_type, "relates-to");
-        assert_eq!(deps[0].depends_on_id, "bead-b");
-        assert_eq!(deps[1].dep_type, "relates-to");
-        assert_eq!(deps[1].depends_on_id, "bead-c");
+        assert!(bead.dependencies.is_some());
+        if let Some(RawDependencies::Legacy(deps)) = &bead.dependencies {
+            assert_eq!(deps.len(), 2);
+            assert_eq!(deps[0].dep_type, "relates-to");
+            assert_eq!(deps[0].depends_on_id, "bead-b");
+            assert_eq!(deps[1].dep_type, "parent-child");
+        } else {
+            panic!("Expected Legacy dependencies");
+        }
     }
 
     #[test]
-    fn test_relates_to_extraction_logic() {
-        // Test the fourth pass extraction logic that populates relates_to from dependencies
-        let mut bead = Bead {
-            id: "bead-a".to_string(),
-            title: "Bead A".to_string(),
-            description: None,
-            status: "open".to_string(),
-            priority: None,
-            issue_type: None,
-            owner: None,
-            created_at: None,
-            created_by: None,
-            updated_at: None,
-            closed_at: None,
-            close_reason: None,
-            comments: None,
-            parent_id: None,
-            children: None,
-            design_doc: None,
-            deps: None,
-            relates_to: None,
-            dependencies: Some(vec![
-                Dependency {
-                    depends_on_id: "bead-b".to_string(),
-                    dep_type: "relates-to".to_string(),
-                },
-                Dependency {
-                    depends_on_id: "bead-parent".to_string(),
-                    dep_type: "parent-child".to_string(),
-                },
-                Dependency {
-                    depends_on_id: "bead-c".to_string(),
-                    dep_type: "relates-to".to_string(),
-                },
-            ]),
-        };
-
-        // Simulate the fourth pass extraction logic
-        if let Some(deps) = &bead.dependencies {
-            let related: Vec<String> = deps
-                .iter()
-                .filter(|dep| dep.dep_type == "relates-to")
-                .map(|dep| dep.depends_on_id.clone())
-                .collect();
-            if !related.is_empty() {
-                bead.relates_to = Some(related);
-            }
+    fn test_parse_new_format_dependencies() {
+        // New format: dependencies as array of strings
+        let json = r#"{"id":"task-71","title":"New Task","status":"open","parent":"epic-65","dependencies":["task-67"],"related":["task-35"]}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        // parent field should be deserialized into parent_id
+        assert_eq!(bead.parent_id, Some("epic-65".to_string()));
+        // related field should be deserialized into relates_to
+        assert_eq!(bead.relates_to, Some(vec!["task-35".to_string()]));
+        // dependencies should be parsed as StringIds
+        if let Some(RawDependencies::StringIds(ids)) = &bead.dependencies {
+            assert_eq!(ids, &vec!["task-67".to_string()]);
+        } else {
+            panic!("Expected StringIds dependencies");
         }
-
-        // Verify only relates-to deps are extracted, not parent-child
-        let relates_to = bead.relates_to.unwrap();
-        assert_eq!(relates_to.len(), 2);
-        assert_eq!(relates_to[0], "bead-b");
-        assert_eq!(relates_to[1], "bead-c");
     }
 
     #[test]
-    fn test_relates_to_none_when_no_relates_to_deps() {
-        // Test that relates_to stays None when there are no relates-to dependencies
-        let mut bead = Bead {
-            id: "bead-x".to_string(),
-            title: "Bead X".to_string(),
-            description: None,
-            status: "open".to_string(),
-            priority: None,
-            issue_type: None,
-            owner: None,
-            created_at: None,
-            created_by: None,
-            updated_at: None,
-            closed_at: None,
-            close_reason: None,
-            comments: None,
-            parent_id: None,
-            children: None,
-            design_doc: None,
-            deps: None,
-            relates_to: None,
-            dependencies: Some(vec![Dependency {
-                depends_on_id: "bead-parent".to_string(),
-                dep_type: "parent-child".to_string(),
-            }]),
-        };
+    fn test_parse_new_format_closed_at_camel_case() {
+        // New format uses closedAt instead of closed_at
+        let json = r#"{"id":"task-67","title":"Done","status":"closed","closedAt":"2026-02-28T12:53:27.963Z"}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        assert_eq!(bead.closed_at, Some("2026-02-28T12:53:27.963Z".to_string()));
+    }
 
-        // Simulate the fourth pass extraction logic
-        if let Some(deps) = &bead.dependencies {
-            let related: Vec<String> = deps
-                .iter()
-                .filter(|dep| dep.dep_type == "relates-to")
-                .map(|dep| dep.depends_on_id.clone())
-                .collect();
-            if !related.is_empty() {
-                bead.relates_to = Some(related);
-            }
-        }
+    #[test]
+    fn test_parse_empty_dependencies_array() {
+        // Empty dependencies array should parse as None
+        let json = r#"{"id":"task-1","title":"No deps","status":"open","dependencies":[]}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        assert!(bead.dependencies.is_none());
+    }
 
-        // No relates-to deps, so relates_to should remain None
-        assert!(bead.relates_to.is_none());
+    #[test]
+    fn test_parse_no_dependencies_field() {
+        // Missing dependencies field should parse fine
+        let json = r#"{"id":"task-2","title":"Simple","status":"open"}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        assert!(bead.dependencies.is_none());
     }
 
     #[test]
@@ -941,10 +967,7 @@ mod tests {
             design_doc: None,
             deps: None,
             relates_to: Some(vec!["bead-r1".to_string(), "bead-r2".to_string()]),
-            dependencies: Some(vec![Dependency {
-                depends_on_id: "bead-r1".to_string(),
-                dep_type: "relates-to".to_string(),
-            }]),
+            dependencies: None,
         };
 
         let json = serde_json::to_string(&bead).unwrap();
@@ -956,7 +979,29 @@ mod tests {
 
         // dependencies should NOT be serialized (skip_serializing)
         assert!(!json.contains("dependencies"));
-        assert!(!json.contains("depends_on_id"));
+    }
+
+    #[test]
+    fn test_parse_real_new_format_line() {
+        // Real line from updated bd CLI
+        let json = r#"{"id":"ai-photo-factory-71","title":"Миграция лендинга","description":"Описание задачи","status":"open","priority":2,"issue_type":"task","owner":"user@email.com","created_at":"2026-02-28T11:30:26.430Z","created_by":"weselow","updated_at":"2026-02-28T11:30:26.430Z","parent":"ai-photo-factory-65","dependencies":["ai-photo-factory-67"]}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        assert_eq!(bead.id, "ai-photo-factory-71");
+        assert_eq!(bead.parent_id, Some("ai-photo-factory-65".to_string()));
+        if let Some(RawDependencies::StringIds(ids)) = &bead.dependencies {
+            assert_eq!(ids, &vec!["ai-photo-factory-67".to_string()]);
+        } else {
+            panic!("Expected StringIds dependencies");
+        }
+    }
+
+    #[test]
+    fn test_parse_new_format_with_related() {
+        // New format with related field
+        let json = r#"{"id":"task-75","title":"Post-processing","status":"open","parent":"epic-65","dependencies":["task-66"],"related":["task-35"]}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        assert_eq!(bead.relates_to, Some(vec!["task-35".to_string()]));
+        assert_eq!(bead.parent_id, Some("epic-65".to_string()));
     }
 
     // ── resolve_issues_path tests ──────────────────────────────────────
