@@ -180,4 +180,83 @@ mod tests {
         assert!(!is_newer("0.3.0", "0.3.1"));
         assert!(is_newer("0.3.2", "0.3.1"));
     }
+
+    // ── fallback_response tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_fallback_response_returns_current_version() {
+        let resp = fallback_response();
+        assert_eq!(resp.current, CURRENT_VERSION);
+    }
+
+    #[test]
+    fn test_fallback_response_has_no_latest() {
+        let resp = fallback_response();
+        assert!(resp.latest.is_none());
+    }
+
+    #[test]
+    fn test_fallback_response_no_update_available() {
+        let resp = fallback_response();
+        assert!(!resp.update_available);
+    }
+
+    #[test]
+    fn test_fallback_response_no_download_url() {
+        let resp = fallback_response();
+        assert!(resp.download_url.is_none());
+    }
+
+    #[test]
+    fn test_fallback_response_no_release_notes() {
+        let resp = fallback_response();
+        assert!(resp.release_notes.is_none());
+    }
+
+    // ── is_newer edge cases ─────────────────────────────────────────────
+
+    #[test]
+    fn test_is_newer_empty_strings() {
+        // Both empty -> equal, not newer
+        assert!(!is_newer("", ""));
+    }
+
+    #[test]
+    fn test_is_newer_latest_empty() {
+        // Empty latest vs valid current -> not newer
+        assert!(!is_newer("", "1.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_current_empty() {
+        // Valid latest vs empty current -> newer
+        assert!(is_newer("1.0.0", ""));
+    }
+
+    #[test]
+    fn test_is_newer_single_digit_versions() {
+        assert!(is_newer("2", "1"));
+        assert!(!is_newer("1", "2"));
+        assert!(!is_newer("1", "1"));
+    }
+
+    #[test]
+    fn test_is_newer_different_length_versions() {
+        // "1.0.1" vs "1.0" — 1.0.1 > 1.0 because [1,0,1] > [1,0]
+        assert!(is_newer("1.0.1", "1.0"));
+        // "1.0" vs "1.0.1" — not newer
+        assert!(!is_newer("1.0", "1.0.1"));
+    }
+
+    #[test]
+    fn test_is_newer_non_numeric_parts_ignored() {
+        // Non-numeric parts are filtered out by parse::<u32>().ok()
+        // "1.2.beta" parses as [1, 2], "1.2.3" parses as [1, 2, 3]
+        assert!(!is_newer("1.2.beta", "1.2.3"));
+    }
+
+    #[test]
+    fn test_is_newer_major_version_bump() {
+        assert!(is_newer("2.0.0", "1.99.99"));
+    }
 }

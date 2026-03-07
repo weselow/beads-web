@@ -1427,4 +1427,106 @@ mod tests {
         let result = resolve_issues_path(project);
         assert_eq!(result, project.join(".beads").join("issues.jsonl"));
     }
+
+    // ── CreateBeadRequest deserialization tests ──────────────────────────
+
+    #[test]
+    fn test_create_bead_request_all_fields() {
+        let json = r#"{
+            "path": "/projects/my-app",
+            "title": "New feature",
+            "description": "Implement the thing",
+            "issue_type": "feature",
+            "priority": 3,
+            "parent_id": "EPIC-001"
+        }"#;
+        let req: CreateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.path, "/projects/my-app");
+        assert_eq!(req.title, "New feature");
+        assert_eq!(req.description, Some("Implement the thing".to_string()));
+        assert_eq!(req.issue_type, Some("feature".to_string()));
+        assert_eq!(req.priority, Some(3));
+        assert_eq!(req.parent_id, Some("EPIC-001".to_string()));
+    }
+
+    #[test]
+    fn test_create_bead_request_required_fields_only() {
+        let json = r#"{"path": "dolt://beads_myproject", "title": "Minimal bead"}"#;
+        let req: CreateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.path, "dolt://beads_myproject");
+        assert_eq!(req.title, "Minimal bead");
+        assert!(req.description.is_none());
+        assert!(req.issue_type.is_none());
+        assert!(req.priority.is_none());
+        assert!(req.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_create_bead_request_missing_title_fails() {
+        let json = r#"{"path": "/projects/my-app"}"#;
+        let result = serde_json::from_str::<CreateBeadRequest>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_bead_request_missing_path_fails() {
+        let json = r#"{"title": "No path"}"#;
+        let result = serde_json::from_str::<CreateBeadRequest>(json);
+        assert!(result.is_err());
+    }
+
+    // ── UpdateBeadRequest deserialization tests ──────────────────────────
+
+    #[test]
+    fn test_update_bead_request_all_fields() {
+        let json = r#"{
+            "path": "/projects/my-app",
+            "id": "TASK-042",
+            "title": "Updated title",
+            "description": "Updated desc",
+            "status": "in_progress"
+        }"#;
+        let req: UpdateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.path, "/projects/my-app");
+        assert_eq!(req.id, "TASK-042");
+        assert_eq!(req.title, Some("Updated title".to_string()));
+        assert_eq!(req.description, Some("Updated desc".to_string()));
+        assert_eq!(req.status, Some("in_progress".to_string()));
+    }
+
+    #[test]
+    fn test_update_bead_request_required_fields_only() {
+        let json = r#"{"path": "dolt://beads_db", "id": "BUG-007"}"#;
+        let req: UpdateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.path, "dolt://beads_db");
+        assert_eq!(req.id, "BUG-007");
+        assert!(req.title.is_none());
+        assert!(req.description.is_none());
+        assert!(req.status.is_none());
+    }
+
+    #[test]
+    fn test_update_bead_request_missing_id_fails() {
+        let json = r#"{"path": "/projects/my-app"}"#;
+        let result = serde_json::from_str::<UpdateBeadRequest>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_bead_request_missing_path_fails() {
+        let json = r#"{"id": "TASK-001"}"#;
+        let result = serde_json::from_str::<UpdateBeadRequest>(json);
+        assert!(result.is_err());
+    }
+
+    // ── DOLT_PATH_PREFIX constant test ──────────────────────────────────
+
+    #[test]
+    fn test_dolt_path_prefix_is_correct() {
+        assert_eq!(DOLT_PATH_PREFIX, "dolt://");
+        // Verify it works for stripping prefix
+        let path = "dolt://beads_mydb";
+        let db_name = path.strip_prefix(DOLT_PATH_PREFIX);
+        assert_eq!(db_name, Some("beads_mydb"));
+    }
 }

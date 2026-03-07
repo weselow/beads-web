@@ -413,3 +413,165 @@ pub fn database_name_for_project(project_path: &Path) -> Option<String> {
         .and_then(|n| n.to_str())
         .map(|name| format!("beads_{}", name))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── database_name_for_project tests ─────────────────────────────────
+
+    #[test]
+    fn test_db_name_from_metadata_json() {
+        // When metadata.json has backend=dolt and dolt_database set, use it
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("my-project");
+        let beads_dir = project.join(".beads");
+        std::fs::create_dir_all(&beads_dir).unwrap();
+        std::fs::write(
+            beads_dir.join("metadata.json"),
+            r#"{"backend": "dolt", "dolt_database": "beads_custom_name"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            database_name_for_project(&project),
+            Some("beads_custom_name".to_string())
+        );
+    }
+
+    #[test]
+    fn test_db_name_non_dolt_backend_returns_none() {
+        // When backend is not "dolt", return None even if dolt_database is set
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("my-project");
+        let beads_dir = project.join(".beads");
+        std::fs::create_dir_all(&beads_dir).unwrap();
+        std::fs::write(
+            beads_dir.join("metadata.json"),
+            r#"{"backend": "jsonl", "dolt_database": "beads_something"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(database_name_for_project(&project), None);
+    }
+
+    #[test]
+    fn test_db_name_dolt_backend_empty_db_name_falls_through() {
+        // backend=dolt but dolt_database is empty -> fall through to config.yaml
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("my-project");
+        let beads_dir = project.join(".beads");
+        std::fs::create_dir_all(&beads_dir).unwrap();
+        std::fs::write(
+            beads_dir.join("metadata.json"),
+            r#"{"backend": "dolt", "dolt_database": ""}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            beads_dir.join("config.yaml"),
+            "issue-prefix: cool-project\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            database_name_for_project(&project),
+            Some("beads_cool-project".to_string())
+        );
+    }
+
+    #[test]
+    fn test_db_name_from_config_yaml_issue_prefix() {
+        // No metadata.json, but config.yaml has issue-prefix
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("my-project");
+        let beads_dir = project.join(".beads");
+        std::fs::create_dir_all(&beads_dir).unwrap();
+        std::fs::write(
+            beads_dir.join("config.yaml"),
+            "issue-prefix: ai-photo-factory\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            database_name_for_project(&project),
+            Some("beads_ai-photo-factory".to_string())
+        );
+    }
+
+    #[test]
+    fn test_db_name_from_directory_name_fallback() {
+        // No metadata.json, no config.yaml -> derive from directory name
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("awesome-app");
+        std::fs::create_dir_all(&project).unwrap();
+
+        assert_eq!(
+            database_name_for_project(&project),
+            Some("beads_awesome-app".to_string())
+        );
+    }
+
+    #[test]
+    fn test_db_name_empty_issue_prefix_falls_through() {
+        // config.yaml with empty issue-prefix -> fall through to directory name
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("fallback-dir");
+        let beads_dir = project.join(".beads");
+        std::fs::create_dir_all(&beads_dir).unwrap();
+        std::fs::write(
+            beads_dir.join("config.yaml"),
+            "issue-prefix: \"\"\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            database_name_for_project(&project),
+            Some("beads_fallback-dir".to_string())
+        );
+    }
+
+    #[test]
+    fn test_db_name_root_path_returns_none() {
+        // Root path has no file_name() -> returns None
+        let root = PathBuf::from("/");
+        // Root path: file_name() returns None on Unix-style roots
+        // On Windows this may differ, so we test the logic directly
+        if root.file_name().is_none() {
+            assert_eq!(database_name_for_project(&root), None);
+        }
+    }
+
+    // ── DoltDatabase serialization test ─────────────────────────────────
+
+    #[test]
+    fn test_dolt_database_serializes_correctly() {
+        let db = DoltDatabase {
+            name: "beads_ai-photo-factory".to_string(),
+            project_name: "ai-photo-factory".to_string(),
+        };
+
+        let json = serde_json::to_string(&db).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["name"], "beads_ai-photo-factory");
+        assert_eq!(parsed["project_name"], "ai-photo-factory");
+    }
+
+    #[test]
+    fn test_dolt_database_serializes_both_fields() {
+        let db = DoltDatabase {
+            name: "beads_test".to_string(),
+            project_name: "test".to_string(),
+        };
+
+        let json = serde_json::to_string(&db).unwrap();
+        // Verify both fields are present
+        assert!(json.contains("\"name\""));
+        assert!(json.contains("\"project_name\""));
+        // Verify no extra fields
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let obj = parsed.as_object().unwrap();
+        assert_eq!(obj.len(), 2);
+    }
+}
