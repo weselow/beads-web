@@ -1,0 +1,380 @@
+/* ===== Theme Presets =====
+ * Each theme overrides all ~45 beads semantic CSS variables.
+ * Light themes also override shadcn base variables for consistency.
+ * Applied via data-theme attribute on <html>.
+ *
+ * Available themes:
+ *   (none / "default")  - Default Dark (current look)
+ *   "glassmorphism"     - Frosted glass, blue/purple accents
+ *   "neo-brutalist"     - Thick borders, neon green, Space Mono
+ *   "linear-minimal"    - Ultra-minimal dark, Linear.app-inspired
+ *   "soft-light"        - Soft shadows, pastel status colors
+ *   "notion-warm"       - Warm neutrals, Notion-style property tags
+ *   "github-clean"      - GitHub Projects-inspired, clean borders
+ */
+
+/* ──────────────────────────────────────────────
+ * THEME 1: Glassmorphism
+ * Frosted glass panels, blue/purple gradient feel
+ * ────────────────────────────────────────────── */
+[data-theme="glassmorphism"] {
+  /* Surface */
+  --surface-base: 240 33% 7%;
+  --surface-raised: 240 20% 12%;
+  --surface-overlay: 240 15% 18%;
+  --surface-inset: 240 12% 22%;
+
+  /* Text */
+  --text-primary: 214 32% 91%;
+  --text-secondary: 215 20% 78%;
+  --text-tertiary: 215 15% 60%;
+  --text-muted: 215 10% 48%;
+  --text-faint: 215 8% 35%;
+
+  /* Border */
+  --border-default: 240 10% 18%;
+  --border-subtle: 240 10% 14%;
+  --border-strong: 240 10% 26%;
+
+  /* Status */
+  --status-open: 217 91% 68%;
+  --status-progress: 45 97% 56%;
+  --status-review: 263 90% 76%;
+  --status-closed: 160 60% 52%;
+
+  /* Semantic */
+  --success: 160 60% 52%;
+  --warning: 45 97% 56%;
+  --danger: 0 84% 60%;
+  --info: 217 91% 68%;
+
+  /* Feature */
+  --epic: 263 90% 76%;
+  --blocked-accent: 0 90% 68%;
+
+  /* Progress */
+  --progress-100: 160 60% 52%;
+  --progress-75: 160 60% 52%;
+  --progress-50: 217 91% 68%;
+  --progress-25: 45 97% 56%;
+  --progress-0: 263 90% 76%;
+}
+
+/* ──────────────────────────────────────────────
+ * THEME 2: Neo-Brutalist
+ * Thick borders, sharp corners, neon accents
+ * ────────────────────────────────────────────── */
+[data-theme="neo-brutalist"] {
+  /* Surface */
+  --surface-base: 0 0% 7%;
+  --surface-raised: 0 0% 10%;
+  --surface-overlay: 0 0% 14%;
+  --surface-inset: 0 0% 18%;
+
+  /* Text */
+  --text-primary: 0 0% 94%;
+  --text-secondary: 0 0% 80%;
+  --text-tertiary: 0 0% 60%;
+  --text-muted: 0 0% 40%;
+  --text-faint: 0 0% 25%;
+
+  /* Border */
+  --border-default: 0 0% 20%;
+  --border-subtle: 0 0% 15%;
+  --border-strong: 0 0% 30%;
+
+  /* Status */
+  --status-open: 217 91% 60%;
+  --status-progress: 48 96% 47%;
+  --status-review: 330 81% 60%;
+  --status-closed: 142 71% 45%;
+
+  /* Semantic */
+  --success: 152 100% 50%;
+  --warning: 48 96% 47%;
+  --danger: 0 84% 60%;
+  --info: 217 91% 60%;
+
+  /* Feature */
+  --epic: 330 81% 60%;
+  --blocked-accent: 0 84% 60%;
+
+  /* Progress */
+  --progress-100: 152 100% 50%;
+  --progress-75: 142 71% 45%;
+  --progress-50: 217 91% 60%;
+  --progress-25: 48 96% 47%;
+  --progress-0: 330 81% 60%;
+}
+
+/* ──────────────────────────────────────────────
+ * THEME 3: Linear Minimal
+ * Ultra-minimal, monochrome with subtle accents
+ * ────────────────────────────────────────────── */
+[data-theme="linear-minimal"] {
+  /* Surface */
+  --surface-base: 240 8% 4%;
+  --surface-raised: 240 6% 7%;
+  --surface-overlay: 240 5% 11%;
+  --surface-inset: 240 5% 15%;
+
+  /* Text */
+  --text-primary: 0 0% 98%;
+  --text-secondary: 240 5% 91%;
+  --text-tertiary: 240 5% 65%;
+  --text-muted: 240 5% 45%;
+  --text-faint: 240 5% 30%;
+
+  /* Border */
+  --border-default: 240 5% 12%;
+  --border-subtle: 240 5% 8%;
+  --border-strong: 240 5% 20%;
+
+  /* Status */
+  --status-open: 240 5% 34%;
+  --status-progress: 48 96% 47%;
+  --status-review: 217 91% 60%;
+  --status-closed: 263 70% 50%;
+
+  /* Semantic */
+  --success: 142 71% 45%;
+  --warning: 48 96% 47%;
+  --danger: 0 84% 60%;
+  --info: 217 91% 60%;
+
+  /* Feature */
+  --epic: 263 70% 50%;
+  --blocked-accent: 0 90% 68%;
+
+  /* Progress */
+  --progress-100: 263 70% 50%;
+  --progress-75: 263 70% 50%;
+  --progress-50: 217 91% 60%;
+  --progress-25: 48 96% 47%;
+  --progress-0: 240 5% 34%;
+}
+
+/* ──────────────────────────────────────────────
+ * THEME 4: Soft Light
+ * Light background, soft shadows, pastel accents
+ * ────────────────────────────────────────────── */
+[data-theme="soft-light"] {
+  /* shadcn overrides for light mode */
+  --background: 220 30% 97%;
+  --foreground: 240 27% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 215 28% 17%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 215 28% 17%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 13% 93%;
+  --secondary-foreground: 215 28% 17%;
+  --muted: 220 13% 93%;
+  --muted-foreground: 218 11% 45%;
+  --accent: 220 13% 93%;
+  --accent-foreground: 215 28% 17%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 216 12% 85%;
+  --input: 216 12% 85%;
+  --ring: 217 91% 60%;
+
+  /* Surface */
+  --surface-base: 220 30% 97%;
+  --surface-raised: 0 0% 100%;
+  --surface-overlay: 220 13% 95%;
+  --surface-inset: 220 13% 92%;
+
+  /* Text */
+  --text-primary: 215 28% 17%;
+  --text-secondary: 215 16% 30%;
+  --text-tertiary: 218 11% 45%;
+  --text-muted: 218 11% 65%;
+  --text-faint: 218 11% 80%;
+
+  /* Border */
+  --border-default: 216 12% 92%;
+  --border-subtle: 216 12% 95%;
+  --border-strong: 216 12% 85%;
+
+  /* Status */
+  --status-open: 217 91% 60%;
+  --status-progress: 38 92% 50%;
+  --status-review: 263 90% 66%;
+  --status-closed: 160 84% 39%;
+
+  /* Semantic */
+  --success: 160 84% 39%;
+  --warning: 38 92% 50%;
+  --danger: 0 84% 60%;
+  --info: 217 91% 60%;
+
+  /* Feature */
+  --epic: 263 90% 46%;
+  --blocked-accent: 0 84% 60%;
+
+  /* Priority */
+  --priority-p0: 0 84% 60%;
+  --priority-p1: 25 95% 53%;
+  --priority-p2: 216 12% 84%;
+  --priority-p3: 216 12% 90%;
+  --priority-p4: 216 12% 90%;
+
+  /* Progress */
+  --progress-100: 160 84% 39%;
+  --progress-75: 160 84% 39%;
+  --progress-50: 217 91% 60%;
+  --progress-25: 38 92% 50%;
+  --progress-0: 263 90% 66%;
+}
+
+/* ──────────────────────────────────────────────
+ * THEME 5: Notion Warm
+ * Warm neutrals, Notion-style property tags
+ * ────────────────────────────────────────────── */
+[data-theme="notion-warm"] {
+  /* shadcn overrides for light mode */
+  --background: 40 23% 97%;
+  --foreground: 40 10% 20%;
+  --card: 0 0% 100%;
+  --card-foreground: 40 10% 20%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 40 10% 20%;
+  --primary: 40 10% 20%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 37 12% 93%;
+  --secondary-foreground: 40 10% 20%;
+  --muted: 37 12% 93%;
+  --muted-foreground: 40 2% 50%;
+  --accent: 37 12% 93%;
+  --accent-foreground: 40 10% 20%;
+  --destructive: 0 72% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 37 12% 89%;
+  --input: 37 12% 89%;
+  --ring: 40 10% 20%;
+
+  /* Surface */
+  --surface-base: 40 23% 97%;
+  --surface-raised: 0 0% 100%;
+  --surface-overlay: 37 15% 95%;
+  --surface-inset: 37 12% 92%;
+
+  /* Text */
+  --text-primary: 40 10% 20%;
+  --text-secondary: 40 6% 35%;
+  --text-tertiary: 40 2% 50%;
+  --text-muted: 40 2% 60%;
+  --text-faint: 40 2% 75%;
+
+  /* Border */
+  --border-default: 37 12% 89%;
+  --border-subtle: 37 12% 93%;
+  --border-strong: 37 12% 82%;
+
+  /* Status */
+  --status-open: 211 60% 43%;
+  --status-progress: 40 100% 30%;
+  --status-review: 268 45% 45%;
+  --status-closed: 135 47% 32%;
+
+  /* Semantic */
+  --success: 135 47% 32%;
+  --warning: 40 100% 30%;
+  --danger: 0 72% 56%;
+  --info: 211 60% 43%;
+
+  /* Feature */
+  --epic: 268 45% 45%;
+  --blocked-accent: 24 88% 45%;
+
+  /* Priority */
+  --priority-p0: 0 72% 56%;
+  --priority-p1: 24 88% 45%;
+  --priority-p2: 40 2% 60%;
+  --priority-p3: 40 2% 75%;
+  --priority-p4: 40 2% 75%;
+
+  /* Progress */
+  --progress-100: 135 47% 32%;
+  --progress-75: 135 47% 32%;
+  --progress-50: 211 60% 43%;
+  --progress-25: 40 100% 30%;
+  --progress-0: 268 45% 45%;
+}
+
+/* ──────────────────────────────────────────────
+ * THEME 6: GitHub Clean
+ * GitHub Projects-inspired, clean and functional
+ * ────────────────────────────────────────────── */
+[data-theme="github-clean"] {
+  /* shadcn overrides for light mode */
+  --background: 210 25% 97%;
+  --foreground: 213 13% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 213 13% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 213 13% 14%;
+  --primary: 212 92% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 14% 93%;
+  --secondary-foreground: 213 13% 14%;
+  --muted: 210 14% 93%;
+  --muted-foreground: 210 9% 46%;
+  --accent: 210 14% 93%;
+  --accent-foreground: 213 13% 14%;
+  --destructive: 356 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 18% 85%;
+  --input: 210 18% 85%;
+  --ring: 212 92% 45%;
+
+  /* Surface */
+  --surface-base: 210 25% 97%;
+  --surface-raised: 0 0% 100%;
+  --surface-overlay: 210 16% 95%;
+  --surface-inset: 210 14% 92%;
+
+  /* Text */
+  --text-primary: 213 13% 14%;
+  --text-secondary: 210 9% 31%;
+  --text-tertiary: 210 9% 39%;
+  --text-muted: 210 9% 58%;
+  --text-faint: 210 9% 75%;
+
+  /* Border */
+  --border-default: 210 18% 87%;
+  --border-subtle: 210 18% 92%;
+  --border-strong: 210 18% 78%;
+
+  /* Status */
+  --status-open: 210 9% 39%;
+  --status-progress: 46 91% 45%;
+  --status-review: 42 100% 37%;
+  --status-closed: 139 63% 33%;
+
+  /* Semantic */
+  --success: 139 63% 33%;
+  --warning: 42 100% 37%;
+  --danger: 356 72% 48%;
+  --info: 212 92% 45%;
+
+  /* Feature */
+  --epic: 264 70% 59%;
+  --blocked-accent: 24 100% 37%;
+
+  /* Priority */
+  --priority-p0: 356 72% 48%;
+  --priority-p1: 24 100% 37%;
+  --priority-p2: 210 9% 58%;
+  --priority-p3: 210 9% 75%;
+  --priority-p4: 210 9% 75%;
+
+  /* Progress */
+  --progress-100: 139 63% 33%;
+  --progress-75: 139 63% 33%;
+  --progress-50: 212 92% 45%;
+  --progress-25: 42 100% 37%;
+  --progress-0: 264 70% 59%;
+}
