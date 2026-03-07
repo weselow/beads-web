@@ -218,7 +218,7 @@ export function FolderBrowser({
       aria-label="Folder browser"
     >
       {/* Breadcrumb navigation */}
-      <div className="flex items-center gap-1 overflow-x-auto rounded-md border border-zinc-700 bg-zinc-800/50 px-2 py-1.5 text-sm">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-md border border-b-strong bg-surface-overlay/50 px-2 py-1.5 text-sm">
         <Button
           variant="ghost"
           size="xs"
@@ -232,7 +232,7 @@ export function FolderBrowser({
         {/* Drive selector on Windows */}
         {driveRoots.length > 1 && (
           <>
-            <ChevronRight className="size-3 shrink-0 text-zinc-500" />
+            <ChevronRight className="size-3 shrink-0 text-t-muted" />
             <div className="flex items-center gap-0.5 shrink-0">
               {driveRoots.map((root) => (
                 <button
@@ -240,10 +240,10 @@ export function FolderBrowser({
                   type="button"
                   onClick={() => navigateToDirectory(root)}
                   className={cn(
-                    "rounded px-1.5 py-0.5 text-xs font-mono transition-colors hover:bg-zinc-700",
+                    "rounded px-1.5 py-0.5 text-xs font-mono transition-colors hover:bg-surface-raised",
                     currentPath.toUpperCase().startsWith(root.charAt(0).toUpperCase())
-                      ? "text-zinc-100 bg-zinc-700"
-                      : "text-zinc-500"
+                      ? "text-t-primary bg-surface-raised"
+                      : "text-t-muted"
                   )}
                   title={root}
                 >
@@ -253,7 +253,7 @@ export function FolderBrowser({
             </div>
           </>
         )}
-        <ChevronRight className="size-3 shrink-0 text-zinc-500" />
+        <ChevronRight className="size-3 shrink-0 text-t-muted" />
         {breadcrumbs.map((seg, index) => {
           const isLast = index === breadcrumbs.length - 1;
           // Skip drive root in breadcrumbs if drives are shown above
@@ -265,14 +265,14 @@ export function FolderBrowser({
                 type="button"
                 onClick={() => navigateToDirectory(seg.path)}
                 className={cn(
-                  "rounded px-1 py-0.5 text-sm transition-colors hover:bg-zinc-700",
-                  isLast ? "text-zinc-100" : "text-zinc-400"
+                  "rounded px-1 py-0.5 text-sm transition-colors hover:bg-surface-raised",
+                  isLast ? "text-t-primary" : "text-t-tertiary"
                 )}
               >
                 {seg.label}
               </button>
               {!isLast && (
-                <ChevronRight className="size-3 shrink-0 text-zinc-500" />
+                <ChevronRight className="size-3 shrink-0 text-t-muted" />
               )}
             </div>
           );
@@ -281,28 +281,28 @@ export function FolderBrowser({
 
       {/* Current path beads indicator */}
       {currentPathHasBeads && (
-        <div className="flex items-center gap-2 rounded-md border border-purple-500/30 bg-purple-500/10 px-3 py-2">
+        <div className="flex items-center gap-2 rounded-md border border-info/30 bg-info/10 px-3 py-2">
           <Badge variant="info" size="sm">
             .beads found
           </Badge>
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-t-tertiary">
             This folder contains a beads project
           </span>
         </div>
       )}
 
       {/* Directory list */}
-      <ScrollArea className="h-[300px] rounded-md border border-zinc-700 bg-zinc-800/50">
+      <ScrollArea className="h-[300px] rounded-md border border-b-strong bg-surface-overlay/50">
         <div ref={listRef} className="p-2" role="listbox" aria-label="Directories">
           {loading ? (
-            <div className="flex items-center justify-center py-8 text-zinc-500">
-              <div className="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent" />
+            <div className="flex items-center justify-center py-8 text-t-muted">
+              <div className="size-4 animate-spin rounded-full border-2 border-b-strong border-t-transparent" />
               <span className="ml-2 text-sm">Loading...</span>
             </div>
           ) : error ? (
-            <div className="py-8 text-center text-sm text-red-400">{error}</div>
+            <div className="py-8 text-center text-sm text-danger">{error}</div>
           ) : directories.length === 0 ? (
-            <div className="py-8 text-center text-sm text-zinc-500">
+            <div className="py-8 text-center text-sm text-t-muted">
               No subdirectories found
             </div>
           ) : (
@@ -317,18 +317,18 @@ export function FolderBrowser({
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
                   selectedIndex === index
-                    ? "bg-zinc-700 text-zinc-100"
-                    : "text-zinc-300 hover:bg-zinc-700/50",
-                  dir.hasBeads && "border-l-2 border-purple-500"
+                    ? "bg-surface-raised text-t-primary"
+                    : "text-t-secondary hover:bg-surface-raised/50",
+                  dir.hasBeads && "border-l-2 border-info"
                 )}
               >
                 {selectedIndex === index ? (
-                  <FolderOpen className="size-4 shrink-0 text-zinc-400" />
+                  <FolderOpen className="size-4 shrink-0 text-t-tertiary" />
                 ) : (
                   <Folder
                     className={cn(
                       "size-4 shrink-0",
-                      dir.hasBeads ? "text-purple-400" : "text-zinc-400"
+                      dir.hasBeads ? "text-info" : "text-t-tertiary"
                     )}
                   />
                 )}
@@ -345,7 +345,7 @@ export function FolderBrowser({
       </ScrollArea>
 
       {/* Keyboard hints */}
-      <div className="text-xs text-zinc-500">
+      <div className="text-xs text-t-muted">
         Double-click or press Enter to open. Backspace to go up.
       </div>
 

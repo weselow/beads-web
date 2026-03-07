@@ -69,14 +69,14 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="dark min-h-dvh bg-[#0a0a0a]">
+    <div className="dark min-h-dvh bg-surface-base">
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-zinc-800 bg-[#0a0a0a]/80 backdrop-blur-sm px-6 py-4">
+      <header className="sticky top-0 z-30 border-b border-b-default bg-surface-base/80 backdrop-blur-sm px-6 py-4">
         <div className="flex items-center gap-4">
           <Link
             href="/"
             aria-label="Go back to home"
-            className="rounded-md p-2 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100"
+            className="rounded-md p-2 text-t-tertiary hover:bg-surface-overlay/50 hover:text-t-primary"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -94,7 +94,7 @@ export default function SettingsPage() {
               <path d="M19 12H5" />
             </svg>
           </Link>
-          <h1 className="text-xl font-semibold text-white">Settings</h1>
+          <h1 className="text-xl font-semibold text-t-primary">Settings</h1>
         </div>
       </header>
 
@@ -102,23 +102,23 @@ export default function SettingsPage() {
       <main className="mx-auto max-w-2xl p-6">
         {/* Tags Section */}
         <section className="mb-8">
-          <h2 className="mb-4 text-lg font-medium text-zinc-100">Tags</h2>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-sm text-zinc-400">
+          <h2 className="mb-4 text-lg font-medium text-t-primary">Tags</h2>
+          <div className="rounded-lg border border-b-default bg-surface-raised/50 p-4">
+            <p className="text-sm text-t-tertiary">
               Manage your project tags here. Tags help organize and categorize your projects.
             </p>
 
             {/* Tags List */}
             <div className="mt-4 space-y-2">
               {isLoading ? (
-                <p className="text-sm text-zinc-400">Loading tags…</p>
+                <p className="text-sm text-t-tertiary">Loading tags…</p>
               ) : tags.length === 0 && !isAddingTag ? (
-                <p className="text-sm text-zinc-400">No tags yet. Create one to get started.</p>
+                <p className="text-sm text-t-tertiary">No tags yet. Create one to get started.</p>
               ) : (
                 tags.map((tag) => (
                   <div
                     key={tag.id}
-                    className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-800/50 px-3 py-2"
+                    className="flex items-center justify-between rounded-md border border-b-default bg-surface-overlay/50 px-3 py-2"
                   >
                     <div className="flex items-center gap-2">
                       <span
@@ -126,11 +126,11 @@ export default function SettingsPage() {
                         style={{ backgroundColor: tag.color }}
                         aria-hidden="true"
                       />
-                      <span className="text-sm font-medium text-zinc-200">{tag.name}</span>
+                      <span className="text-sm font-medium text-t-secondary">{tag.name}</span>
                     </div>
                     <button
                       onClick={() => handleDeleteTag(tag.id)}
-                      className="rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                      className="rounded p-1 text-t-muted hover:bg-surface-overlay hover:text-t-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-t-tertiary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base"
                       title="Delete tag"
                       aria-label={`Delete tag ${tag.name}`}
                     >
@@ -158,7 +158,7 @@ export default function SettingsPage() {
 
               {/* Add Tag Form */}
               {isAddingTag && (
-                <div className="mt-3 space-y-3 rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
+                <div className="mt-3 space-y-3 rounded-md border border-b-default bg-surface-raised/70 p-3">
                   <div className="flex items-center gap-2">
                     <ColorPicker value={newTagColor} onChange={setNewTagColor} />
                     <Input
@@ -166,7 +166,7 @@ export default function SettingsPage() {
                       onChange={(e) => setNewTagName(e.target.value)}
                       placeholder="Tag name…"
                       aria-label="Tag name"
-                      className="flex-1 border-zinc-700 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500"
+                      className="flex-1 border-b-strong bg-surface-overlay text-t-primary placeholder:text-t-muted"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -183,7 +183,7 @@ export default function SettingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-zinc-700 bg-transparent text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                      className="border-b-strong bg-transparent text-t-tertiary hover:bg-surface-overlay hover:text-t-primary"
                       onClick={() => {
                         setIsAddingTag(false);
                         setNewTagName("");
@@ -194,7 +194,7 @@ export default function SettingsPage() {
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-zinc-100 text-zinc-900 hover:bg-white"
+                      className="bg-t-primary text-t-inverse hover:bg-t-primary"
                       onClick={handleCreateTag}
                       disabled={!newTagName.trim()}
                     >
@@ -210,7 +210,7 @@ export default function SettingsPage() {
               <div className="mt-4">
                 <button
                   onClick={() => setIsAddingTag(true)}
-                  className="rounded-md bg-zinc-100 px-3 py-1.5 text-sm text-zinc-900 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                  className="rounded-md bg-t-primary px-3 py-1.5 text-sm text-t-inverse hover:bg-t-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-t-tertiary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base"
                 >
                   Add Tag
                 </button>
@@ -221,17 +221,17 @@ export default function SettingsPage() {
 
         {/* PR Status Settings Section */}
         <section className="mb-8">
-          <h2 className="mb-4 text-lg font-medium text-zinc-100">PR Status Settings</h2>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <h2 className="mb-4 text-lg font-medium text-t-primary">PR Status Settings</h2>
+          <div className="rounded-lg border border-b-default bg-surface-raised/50 p-4">
             {!prSettingsLoaded ? (
-              <p className="text-sm text-zinc-400">Loading settings...</p>
+              <p className="text-sm text-t-tertiary">Loading settings...</p>
             ) : (
               <div className="space-y-6">
                 {/* Polling Interval */}
                 <div>
                   <label
                     htmlFor="polling-interval"
-                    className="block text-sm font-medium text-zinc-200"
+                    className="block text-sm font-medium text-t-secondary"
                   >
                     Polling interval
                   </label>
@@ -248,19 +248,19 @@ export default function SettingsPage() {
                           updateSetting("pollingInterval", value);
                         }
                       }}
-                      className="w-20 border-zinc-700 bg-zinc-800 text-zinc-100 tabular-nums"
+                      className="w-20 border-b-strong bg-surface-overlay text-t-primary tabular-nums"
                       aria-describedby="polling-interval-hint"
                     />
-                    <span className="text-sm text-zinc-400">seconds</span>
+                    <span className="text-sm text-t-tertiary">seconds</span>
                   </div>
-                  <p id="polling-interval-hint" className="mt-1 text-xs text-zinc-500">
+                  <p id="polling-interval-hint" className="mt-1 text-xs text-t-muted">
                     ({MIN_POLLING_INTERVAL}-{MAX_POLLING_INTERVAL})
                   </p>
                 </div>
 
                 {/* Default Merge Method */}
                 <fieldset>
-                  <legend className="text-sm font-medium text-zinc-200">
+                  <legend className="text-sm font-medium text-t-secondary">
                     Default merge method
                   </legend>
                   <div className="mt-2 space-y-2" role="radiogroup" aria-label="Default merge method">
@@ -275,9 +275,9 @@ export default function SettingsPage() {
                           value={option.value}
                           checked={prSettings.mergeMethod === option.value}
                           onChange={() => updateSetting("mergeMethod", option.value)}
-                          className="size-4 border-zinc-600 bg-zinc-800 text-zinc-100 focus:ring-zinc-400 focus:ring-offset-[#0a0a0a]"
+                          className="size-4 border-b-strong bg-surface-overlay text-t-primary focus:ring-t-tertiary focus:ring-offset-surface-base"
                         />
-                        <span className="text-sm text-zinc-300">{option.label}</span>
+                        <span className="text-sm text-t-secondary">{option.label}</span>
                       </label>
                     ))}
                   </div>
@@ -292,9 +292,9 @@ export default function SettingsPage() {
                       onChange={(e) =>
                         updateSetting("showRateLimitWarnings", e.target.checked)
                       }
-                      className="size-4 rounded border-zinc-600 bg-zinc-800 text-zinc-100 focus:ring-zinc-400 focus:ring-offset-[#0a0a0a]"
+                      className="size-4 rounded border-b-strong bg-surface-overlay text-t-primary focus:ring-t-tertiary focus:ring-offset-surface-base"
                     />
-                    <span className="text-sm text-zinc-300">Show rate limit warnings</span>
+                    <span className="text-sm text-t-secondary">Show rate limit warnings</span>
                   </label>
 
                   <label className="flex cursor-pointer items-center gap-2">
@@ -302,9 +302,9 @@ export default function SettingsPage() {
                       type="checkbox"
                       checked={prSettings.autoMerge}
                       onChange={(e) => updateSetting("autoMerge", e.target.checked)}
-                      className="size-4 rounded border-zinc-600 bg-zinc-800 text-zinc-100 focus:ring-zinc-400 focus:ring-offset-[#0a0a0a]"
+                      className="size-4 rounded border-b-strong bg-surface-overlay text-t-primary focus:ring-t-tertiary focus:ring-offset-surface-base"
                     />
-                    <span className="text-sm text-zinc-300">Auto-merge when checks pass</span>
+                    <span className="text-sm text-t-secondary">Auto-merge when checks pass</span>
                   </label>
                 </div>
               </div>
@@ -314,16 +314,16 @@ export default function SettingsPage() {
 
         {/* Data Section */}
         <section className="mb-8">
-          <h2 className="mb-4 text-lg font-medium text-zinc-100">Data</h2>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <h2 className="mb-4 text-lg font-medium text-t-primary">Data</h2>
+          <div className="rounded-lg border border-b-default bg-surface-raised/50 p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-red-400">Clear Local Database</p>
-                <p className="text-sm text-zinc-400">
+                <p className="font-medium text-danger">Clear Local Database</p>
+                <p className="text-sm text-t-tertiary">
                   Remove all projects and tags from local storage
                 </p>
               </div>
-              <button className="rounded-md border border-red-800/50 bg-red-900/30 px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]">
+              <button className="rounded-md border border-danger/50 bg-danger/30 px-3 py-1.5 text-sm text-danger hover:bg-danger/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base">
                 Clear Data
               </button>
             </div>

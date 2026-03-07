@@ -113,7 +113,7 @@ export function TagPicker({
           size="sm"
           className={cn(
             "h-6 w-6 p-0 rounded-full",
-            "hover:bg-zinc-100 dark:hover:bg-zinc-700",
+            "hover:bg-surface-overlay",
             className
           )}
           onClick={(e) => {
@@ -122,7 +122,7 @@ export function TagPicker({
             e.stopPropagation();
           }}
         >
-          <Plus className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+          <Plus className="h-4 w-4 text-t-tertiary" aria-hidden="true" />
           <span className="sr-only">Add tag</span>
         </Button>
       </PopoverTrigger>
@@ -140,7 +140,7 @@ export function TagPicker({
                   key={tag.id}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                    "hover:bg-zinc-100 dark:hover:bg-zinc-700",
+                    "hover:bg-surface-overlay",
                     isLoading && "opacity-50 pointer-events-none"
                   )}
                   onClick={() => handleToggleTag(tag)}
@@ -154,7 +154,7 @@ export function TagPicker({
                   />
                   <span className="flex-1 truncate">{tag.name}</span>
                   {isTagSelected(tag.id) && (
-                    <Check className="h-4 w-4 text-green-600 shrink-0" aria-hidden="true" />
+                    <Check className="h-4 w-4 text-success shrink-0" aria-hidden="true" />
                   )}
                 </button>
               ))}
@@ -162,7 +162,7 @@ export function TagPicker({
           )}
 
           {/* Divider */}
-          {allTags.length > 0 && <div className="border-t border-zinc-200 dark:border-zinc-700" />}
+          {allTags.length > 0 && <div className="border-t border-b-strong" />}
 
           {/* Create new tag section */}
           {isCreating ? (
@@ -211,7 +211,7 @@ export function TagPicker({
             </div>
           ) : (
             <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 dark:text-zinc-400 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-t-tertiary transition-colors hover:bg-surface-overlay"
               onClick={() => setIsCreating(true)}
               type="button"
             >

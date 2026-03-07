@@ -109,7 +109,7 @@ export function EditableProjectName({
 
   return (
     <div className="flex items-center gap-2">
-      <h1 className="text-lg font-semibold text-zinc-100">{formatProjectName(initialName)}</h1>
+      <h1 className="text-lg font-semibold text-t-primary">{formatProjectName(initialName)}</h1>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
