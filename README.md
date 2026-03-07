@@ -8,7 +8,7 @@
 
 <br>
 
-![Beads Web — Kanban Board](screenshots/kanban-default.png)
+![Beads Web — Kanban Board](screenshots/kanban-main.png)
 
 <br>
 
@@ -68,28 +68,28 @@ Full changelog with rationale: [docs/changelog.md](docs/changelog.md)
 
 ## Themes
 
-Default Dark theme is shown in the main screenshot above.
+Soft Light theme is shown in the main screenshot above.
 
 <details>
 <summary>See all 7 themes</summary>
 
+**Default Dark**
+![Default Dark](screenshots/kanban-default.png)
+
 **Glassmorphism**
-![Glassmorphism](screenshots/dashboard-glassmorphism.png)
+![Glassmorphism](screenshots/kanban-glassmorphism.png)
 
 **Neo-Brutalist**
-![Neo-Brutalist](screenshots/dashboard-neo-brutalist.png)
+![Neo-Brutalist](screenshots/kanban-neo-brutalist.png)
 
 **Linear Minimal**
-![Linear Minimal](screenshots/dashboard-linear-minimal.png)
-
-**Soft Light**
-![Soft Light](screenshots/dashboard-soft-light.png)
+![Linear Minimal](screenshots/kanban-linear-minimal.png)
 
 **Notion Warm**
-![Notion Warm](screenshots/dashboard-notion-warm.png)
+![Notion Warm](screenshots/kanban-notion-warm.png)
 
 **GitHub Clean**
-![GitHub Clean](screenshots/dashboard-github-clean.png)
+![GitHub Clean](screenshots/kanban-github-clean.png)
 
 </details>
 
