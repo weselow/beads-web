@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 
 import { ColorPicker } from "@/components/color-picker";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -100,6 +101,14 @@ export default function SettingsPage() {
 
       {/* Settings Content */}
       <main className="mx-auto max-w-2xl p-6">
+        {/* Theme Section */}
+        <section className="mb-8">
+          <h2 className="mb-4 text-lg font-medium text-zinc-100">Theme</h2>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+            <ThemeSwitcher />
+          </div>
+        </section>
+
         {/* Tags Section */}
         <section className="mb-8">
           <h2 className="mb-4 text-lg font-medium text-t-primary">Tags</h2>

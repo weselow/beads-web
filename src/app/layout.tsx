@@ -1,6 +1,7 @@
 import { Space_Grotesk, Plus_Jakarta_Sans } from 'next/font/google';
 
 import { DevTools } from '@/components/dev-tools';
+import { ThemeInitScript } from '@/components/theme-init';
 import { Toaster } from '@/components/ui/toaster';
 
 import type { Metadata } from 'next';
@@ -29,8 +30,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`dark ${spaceGrotesk.variable} ${plusJakartaSans.variable}`}>
-      <body className="flex min-h-screen flex-col bg-background antialiased">
+    <html lang="en" className={`dark ${spaceGrotesk.variable} ${plusJakartaSans.variable}`} suppressHydrationWarning>
+      <head>
+        <ThemeInitScript />
+      </head>
+      <body className="flex min-h-screen flex-col bg-background antialiased transition-colors duration-300">
         <div className="flex-1">{children}</div>
         <Toaster />
         <DevTools />
