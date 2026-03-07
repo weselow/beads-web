@@ -142,6 +142,14 @@ html[data-theme="neo-brutalist"] {
   --ls-title: 0.05em;
   --ls-label: 0.1em;
 
+  /* Text transform — uppercase everything */
+  --tt-heading: uppercase;
+  --tt-badge: uppercase;
+  --tt-column: uppercase;
+
+  /* Priority bar */
+  --priority-bar-w: 3px;
+
   /* Effects */
   --card-shadow: none;
   --card-hover-shadow: 4px 4px 0 #333;
@@ -540,7 +548,7 @@ html[data-theme="glassmorphism"] .theme-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-/* ─── Neo-Brutalist: thick borders, offset shadows, uppercase labels ─── */
+/* ─── Neo-Brutalist: thick borders, offset shadows, uppercase, column-colored cards ─── */
 html[data-theme="neo-brutalist"] .theme-column {
   border-right: 3px solid hsl(var(--border-default));
   border-radius: 0;
@@ -551,18 +559,73 @@ html[data-theme="neo-brutalist"] .theme-column:last-child {
 }
 
 html[data-theme="neo-brutalist"] .theme-card {
-  border: 2px solid hsl(var(--border-default));
+  border: 2px solid var(--column-accent, hsl(var(--border-default)));
 }
 
 html[data-theme="neo-brutalist"] .theme-card:hover {
-  border-color: hsl(var(--border-strong));
+  border-color: var(--column-accent, hsl(var(--border-strong)));
   transform: translate(-2px, -2px);
 }
 
 html[data-theme="neo-brutalist"] .theme-badge {
-  border: 2px solid hsl(var(--border-default));
-  text-transform: uppercase;
+  border: 2px solid currentColor;
   font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* Column header: thick bottom border + left accent bar */
+html[data-theme="neo-brutalist"] .brutalist-column-header {
+  border-bottom: 3px solid hsl(var(--border-default));
+  position: relative;
+}
+
+html[data-theme="neo-brutalist"] .brutalist-column-header::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--column-accent);
+}
+
+/* Column title in mono uppercase */
+html[data-theme="neo-brutalist"] .column-title-text {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-size: 11px;
+}
+
+/* Count badge: square with colored border */
+html[data-theme="neo-brutalist"] .column-count-badge {
+  border: 2px solid var(--column-accent);
+  color: var(--column-accent);
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* Body font: mono for descriptions */
+html[data-theme="neo-brutalist"] .card-desc-text {
+  font-family: var(--font-mono);
+}
+
+/* Footer text uppercase */
+html[data-theme="neo-brutalist"] .card-footer-text {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Terminal header styling */
+html[data-theme="neo-brutalist"] .terminal-header {
+  border-bottom: 3px solid hsl(var(--border-default));
+}
+
+html[data-theme="neo-brutalist"] .terminal-header h1 {
+  color: #00ff88;
 }
 
 /* ─── Linear Minimal: card dividers, no card borders ─── */

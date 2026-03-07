@@ -7,12 +7,16 @@
 /** Card layout variants that themes can use */
 export type CardLayout = 'standard' | 'compact-row' | 'property-tags';
 
+/** Header variant for the project board */
+export type HeaderVariant = 'standard' | 'terminal';
+
 export interface ThemeDefinition {
   id: string;
   name: string;
   description: string;
   mode: 'dark' | 'light';
   layout: CardLayout;
+  headerVariant: HeaderVariant;
   preview: {
     bg: string;
     surface: string;
@@ -28,6 +32,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'The original dark theme',
     mode: 'dark',
     layout: 'standard',
+    headerVariant: 'standard',
     preview: { bg: '#0a0a0a', surface: '#18181b', text: '#f5f5f5', accent: '#3b82f6' },
   },
   {
@@ -36,6 +41,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'Frosted glass, blue & purple accents',
     mode: 'dark',
     layout: 'standard',
+    headerVariant: 'standard',
     preview: { bg: '#0a0a1a', surface: '#1a1a2e', text: '#e2e8f0', accent: '#a78bfa' },
   },
   {
@@ -44,6 +50,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'Thick borders, neon green, monospace',
     mode: 'dark',
     layout: 'standard',
+    headerVariant: 'terminal',
     preview: { bg: '#111111', surface: '#1a1a1a', text: '#f0f0f0', accent: '#00ff88' },
   },
   {
@@ -52,6 +59,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'Ultra-minimal, monochrome with subtle accents',
     mode: 'dark',
     layout: 'compact-row',
+    headerVariant: 'standard',
     preview: { bg: '#0c0c0e', surface: '#121215', text: '#d4d4d8', accent: '#6d28d9' },
   },
   {
@@ -60,6 +68,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'Light background, soft shadows, pastels',
     mode: 'light',
     layout: 'standard',
+    headerVariant: 'standard',
     preview: { bg: '#f8f9fb', surface: '#ffffff', text: '#1f2937', accent: '#8b5cf6' },
   },
   {
@@ -68,6 +77,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'Warm neutrals, Notion-style tags',
     mode: 'light',
     layout: 'property-tags',
+    headerVariant: 'standard',
     preview: { bg: '#faf9f7', surface: '#ffffff', text: '#37352f', accent: '#6940a5' },
   },
   {
@@ -76,6 +86,7 @@ export const THEMES: ThemeDefinition[] = [
     description: 'GitHub Projects-inspired, clean borders',
     mode: 'light',
     layout: 'property-tags',
+    headerVariant: 'standard',
     preview: { bg: '#f6f8fa', surface: '#ffffff', text: '#1f2328', accent: '#0969da' },
   },
 ];

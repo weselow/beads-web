@@ -338,78 +338,91 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
     <div
       {...interactionProps}
       className={cn(
-        "theme-card cursor-pointer bg-card border border-border/40",
+        "theme-card cursor-pointer bg-card border border-border/40 flex",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        blocked ? "border-l-4 border-l-danger" : "border-l-2 border-l-muted-foreground/30",
+        blocked ? "border-l-4 border-l-danger" : "",
         isSelected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
       )}
     >
-      <div className="p-3 space-y-1.5">
-        {/* Row 1: ID (left) + Type Badge (right) */}
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-mono text-muted-foreground">
-            {ticketNumber !== undefined && (
-              <CopyableText copyText={`#${ticketNumber}`} className="font-semibold text-foreground">
-                #{ticketNumber}
+      {/* Priority bar (visible when --priority-bar-w > 0, i.e. brutalist) */}
+      <div
+        className={cn(
+          "theme-priority-bar shrink-0",
+          bead.priority === 0 ? "bg-danger" :
+          bead.priority === 1 ? "bg-blocked-accent" :
+          bead.priority === 2 ? "bg-t-faint" :
+          "bg-surface-inset"
+        )}
+      />
+
+      <div className="flex-1 min-w-0">
+        <div className="p-3 space-y-1.5">
+          {/* Row 1: ID (left) + Type Badge (right) */}
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-mono text-muted-foreground">
+              {ticketNumber !== undefined && (
+                <CopyableText copyText={`#${ticketNumber}`} className="font-semibold text-foreground">
+                  #{ticketNumber}
+                </CopyableText>
+              )}
+              {ticketNumber !== undefined && " "}
+              <CopyableText copyText={bead.id}>
+                {formatBeadId(bead.id)}
               </CopyableText>
-            )}
-            {ticketNumber !== undefined && " "}
-            <CopyableText copyText={bead.id}>
-              {formatBeadId(bead.id)}
-            </CopyableText>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {blocked && (
+                <Badge variant="destructive" appearance="light" size="xs" className="theme-badge">BLOCKED</Badge>
+              )}
+              {bead._statusBadge && !(blocked && bead._originalStatus === 'blocked') && (
+                <Badge
+                  variant="outline"
+                  size="xs"
+                  className={cn("theme-badge", getStatusBadgeClasses(bead._statusBadge.variant))}
+                >
+                  {bead._statusBadge.label}
+                </Badge>
+              )}
+              <Badge variant="outline" size="xs" className="theme-badge">{getTypeLabel(bead)}</Badge>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {blocked && (
-              <Badge variant="destructive" appearance="light" size="xs">BLOCKED</Badge>
-            )}
-            {bead._statusBadge && !(blocked && bead._originalStatus === 'blocked') && (
-              <Badge
-                variant="outline"
-                size="xs"
-                className={getStatusBadgeClasses(bead._statusBadge.variant)}
-              >
-                {bead._statusBadge.label}
-              </Badge>
-            )}
-            <Badge variant="outline" size="xs">{getTypeLabel(bead)}</Badge>
+
+          {/* Row 2: Title */}
+          <div className="font-semibold text-sm leading-tight">
+            {truncate(bead.title, 60)}
           </div>
+
+          {/* Description */}
+          {bead.description && (
+            <p className="text-xs text-muted-foreground leading-relaxed text-pretty card-desc-text">
+              {truncate(bead.description, 80)}
+            </p>
+          )}
         </div>
 
-        {/* Row 2: Title */}
-        <div className="font-semibold text-sm leading-tight">
-          {truncate(bead.title, 60)}
-        </div>
+        {/* Worktree and PR status box */}
+        {worktreeSection && (
+          <div className="px-3 pb-3">{worktreeSection}</div>
+        )}
 
-        {/* Description */}
-        {bead.description && (
-          <p className="text-xs text-muted-foreground leading-relaxed text-pretty">
-            {truncate(bead.description, 80)}
-          </p>
+        {/* Footer: comment count + related count */}
+        {(commentCount > 0 || relatedCount > 0) && (
+          <div className="flex items-center p-3 pt-0 gap-2 text-muted-foreground card-footer-text">
+            {commentCount > 0 && (
+              <span className="flex items-center gap-1 text-[10px]">
+                <MessageSquare className="size-3" aria-hidden="true" />
+                {commentCount} {commentCount === 1 ? "comment" : "comments"}
+              </span>
+            )}
+            {relatedCount > 0 && (
+              <span className="flex items-center gap-1 text-[10px]">
+                <Link2 className="size-3" aria-hidden="true" />
+                {relatedCount} related
+              </span>
+            )}
+          </div>
         )}
       </div>
-
-      {/* Worktree and PR status box */}
-      {worktreeSection && (
-        <div className="px-3 pb-3">{worktreeSection}</div>
-      )}
-
-      {/* Footer: comment count + related count */}
-      {(commentCount > 0 || relatedCount > 0) && (
-        <div className="flex items-center p-3 pt-0 gap-2 text-muted-foreground">
-          {commentCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px]">
-              <MessageSquare className="size-3" aria-hidden="true" />
-              {commentCount} {commentCount === 1 ? "comment" : "comments"}
-            </span>
-          )}
-          {relatedCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px]">
-              <Link2 className="size-3" aria-hidden="true" />
-              {relatedCount} related
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 }

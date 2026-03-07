@@ -8,6 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Bead, BeadStatus, Epic } from "@/types";
 
+/**
+ * Get the CSS color value for a column's accent (used as --column-accent)
+ */
+function getColumnAccentColor(status: BeadStatus): string {
+  switch (status) {
+    case "open": return "hsl(var(--status-open))";
+    case "in_progress": return "hsl(var(--status-progress))";
+    case "inreview": return "hsl(var(--status-review))";
+    case "closed": return "hsl(var(--status-closed))";
+    default: return "hsl(var(--text-muted))";
+  }
+}
+
 export interface KanbanColumnProps {
   status: BeadStatus;
   title: string;
@@ -109,16 +122,17 @@ export function KanbanColumn({
         "flex flex-col h-full min-h-0 theme-column",
         "bg-surface-raised/30 border border-b-default/50"
       )}
+      style={{ '--column-accent': getColumnAccentColor(status) } as React.CSSProperties}
     >
       {/* Column Header - fixed height with colored accent border */}
       <div className={cn(
-        "flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-b-default/50",
+        "flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-b-default/50 brutalist-column-header",
         getColumnAccentBorder(status)
       )}>
-        <h2 className={cn("font-semibold text-sm", getHeaderTextColor(status))}>{title}</h2>
+        <h2 className={cn("font-semibold text-sm column-title-text", getHeaderTextColor(status))}>{title}</h2>
         <Badge
           variant="secondary"
-          className={cn("text-xs px-2 py-0.5", getBadgeVariant(status))}
+          className={cn("text-xs px-2 py-0.5 column-count-badge", getBadgeVariant(status))}
         >
           {beads.length}
         </Badge>
