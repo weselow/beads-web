@@ -10,10 +10,10 @@ import { cn } from '@/lib/utils';
 const avatarStatusVariants = cva('flex items-center rounded-full size-2 border-2 border-background', {
   variants: {
     variant: {
-      online: 'bg-green-600',
-      offline: 'bg-zinc-400 dark:bg-zinc-500',
-      busy: 'bg-yellow-600',
-      away: 'bg-blue-600',
+      online: 'bg-success',
+      offline: 'bg-t-muted',
+      busy: 'bg-warning',
+      away: 'bg-info',
     },
   },
   defaultVariants: {

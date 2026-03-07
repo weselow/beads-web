@@ -201,13 +201,13 @@ export function ScanDirectoryDialog({
               {browsing ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-zinc-300">
+                    <label className="text-sm font-medium text-t-secondary">
                       Browse Folders
                     </label>
                     <button
                       type="button"
                       onClick={() => setBrowsing(false)}
-                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                      className="text-xs text-t-muted hover:text-t-secondary transition-colors"
                     >
                       Type path instead
                     </button>
@@ -220,12 +220,12 @@ export function ScanDirectoryDialog({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <label htmlFor="scan-path" className="text-sm font-medium text-zinc-300">
+                  <label htmlFor="scan-path" className="text-sm font-medium text-t-secondary">
                     Parent Directory
                   </label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
-                      <Folder className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+                      <Folder className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-t-muted" aria-hidden="true" />
                       <Input
                         id="scan-path"
                         value={selectedDirectory}
@@ -245,7 +245,7 @@ export function ScanDirectoryDialog({
                       Browse
                     </Button>
                   </div>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-t-muted">
                     Enter a directory path to scan its subdirectories for beads projects.
                   </p>
                 </div>
@@ -274,11 +274,11 @@ export function ScanDirectoryDialog({
           {step === "results" && (
             <div className="flex flex-col gap-4 py-4">
               {scannedProjects.length === 0 ? (
-                <div className="rounded-md border border-zinc-700 bg-zinc-800/50 px-4 py-8 text-center">
-                  <p className="text-zinc-400">
+                <div className="rounded-md border border-b-strong bg-surface-overlay/50 px-4 py-8 text-center">
+                  <p className="text-t-tertiary">
                     No beads projects found in subdirectories.
                   </p>
-                  <p className="mt-1 text-sm text-zinc-500">
+                  <p className="mt-1 text-sm text-t-muted">
                     Make sure subdirectories have a .beads folder.
                   </p>
                 </div>
@@ -300,7 +300,7 @@ export function ScanDirectoryDialog({
                     </Button>
                   </div>
 
-                  <ScrollArea className="h-[250px] rounded-md border border-zinc-700 bg-zinc-800/50">
+                  <ScrollArea className="h-[250px] rounded-md border border-b-strong bg-surface-overlay/50">
                     <div className="p-2" role="listbox" aria-label="Found projects">
                       {scannedProjects.map((project) => (
                         <button
@@ -312,16 +312,16 @@ export function ScanDirectoryDialog({
                           className={cn(
                             "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
                             project.selected
-                              ? "bg-zinc-700 text-zinc-100"
-                              : "text-zinc-400 hover:bg-zinc-700/50"
+                              ? "bg-surface-overlay text-t-primary"
+                              : "text-t-tertiary hover:bg-surface-overlay/50"
                           )}
                         >
                           <div
                             className={cn(
                               "flex size-5 shrink-0 items-center justify-center rounded border",
                               project.selected
-                                ? "border-purple-500 bg-purple-500"
-                                : "border-zinc-600 bg-transparent"
+                                ? "border-epic bg-epic"
+                                : "border-b-strong bg-transparent"
                             )}
                           >
                             {project.selected && (
@@ -332,15 +332,15 @@ export function ScanDirectoryDialog({
                             className={cn(
                               "size-4 shrink-0",
                               project.selected
-                                ? "text-purple-400"
-                                : "text-zinc-500"
+                                ? "text-epic"
+                                : "text-t-muted"
                             )}
                           />
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium">
                               {project.name}
                             </p>
-                            <p className="truncate text-xs text-zinc-500">
+                            <p className="truncate text-xs text-t-muted">
                               {project.path}
                             </p>
                           </div>
@@ -378,8 +378,8 @@ export function ScanDirectoryDialog({
                 <p className="mb-3">
                   The following projects will be added to your dashboard:
                 </p>
-                <ScrollArea className="max-h-[150px] rounded-md border border-zinc-700 bg-zinc-800/50">
-                  <ul className="p-2 text-sm text-zinc-300">
+                <ScrollArea className="max-h-[150px] rounded-md border border-b-strong bg-surface-overlay/50">
+                  <ul className="p-2 text-sm text-t-secondary">
                     {scannedProjects
                       .filter((p) => p.selected)
                       .map((project) => (
@@ -387,7 +387,7 @@ export function ScanDirectoryDialog({
                           key={project.path}
                           className="flex items-center gap-2 py-1"
                         >
-                          <Folder className="size-3 shrink-0 text-purple-400" />
+                          <Folder className="size-3 shrink-0 text-epic" />
                           <span className="truncate">{project.name}</span>
                         </li>
                       ))}

@@ -216,7 +216,7 @@ export function AddProjectDialog({
             {/* Dolt auto-discovery section */}
             {!browsing && !doltLoading && newDoltDatabases.length > 0 && (
               <div className="space-y-2">
-                <label className="flex items-center gap-1.5 text-sm font-medium text-zinc-300">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-t-secondary">
                   <Database className="size-3.5" />
                   Found in Dolt
                 </label>
@@ -227,13 +227,13 @@ export function AddProjectDialog({
                       type="button"
                       onClick={() => handleDoltQuickAdd(db)}
                       disabled={isSubmitting}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-700/50"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-b-strong bg-surface-overlay/50 px-3 py-1.5 text-sm text-t-secondary transition-colors hover:border-b-strong hover:bg-surface-overlay/50"
                     >
                       {db.project_name}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-t-muted">
                   Click to add instantly (read-only via Dolt SQL).
                 </p>
               </div>
@@ -241,13 +241,13 @@ export function AddProjectDialog({
             {browsing ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-zinc-300">
+                  <label className="text-sm font-medium text-t-secondary">
                     Browse Folders
                   </label>
                   <button
                     type="button"
                     onClick={() => setBrowsing(false)}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="text-xs text-t-muted hover:text-t-secondary transition-colors"
                   >
                     Type path instead
                   </button>
@@ -260,12 +260,12 @@ export function AddProjectDialog({
               </div>
             ) : (
               <div className="space-y-2">
-                <label htmlFor="path" className="text-sm font-medium text-zinc-300">
+                <label htmlFor="path" className="text-sm font-medium text-t-secondary">
                   Project Path
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <Folder className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+                    <Folder className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-t-muted" aria-hidden="true" />
                     <Input
                       id="path"
                       value={projectPath}
@@ -289,9 +289,9 @@ export function AddProjectDialog({
                   </Button>
                 </div>
                 {pathError && (
-                  <p className="text-sm text-red-400">{pathError}</p>
+                  <p className="text-sm text-danger">{pathError}</p>
                 )}
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-t-muted">
                   Enter the full path to your project folder (must contain a .beads folder).
                 </p>
               </div>
@@ -318,7 +318,7 @@ export function AddProjectDialog({
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <label htmlFor="name" className="text-sm font-medium text-zinc-300">
+                <label htmlFor="name" className="text-sm font-medium text-t-secondary">
                   Project Name
                 </label>
                 <Input
@@ -330,8 +330,8 @@ export function AddProjectDialog({
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-300">Location</label>
-                <p className="truncate rounded-md bg-zinc-800 px-3 py-2 text-sm text-zinc-400">
+                <label className="text-sm font-medium text-t-secondary">Location</label>
+                <p className="truncate rounded-md bg-surface-overlay px-3 py-2 text-sm text-t-tertiary">
                   {projectPath}
                 </p>
               </div>

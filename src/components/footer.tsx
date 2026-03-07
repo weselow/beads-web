@@ -1,14 +1,14 @@
 export function Footer() {
   return (
-    <footer className="border-t border-zinc-200 px-6 py-4">
-      <div className="flex flex-col items-center justify-center gap-2 text-sm text-zinc-500 sm:flex-row sm:gap-4">
+    <footer className="border-t border-b-default px-6 py-4">
+      <div className="flex flex-col items-center justify-center gap-2 text-sm text-t-muted sm:flex-row sm:gap-4">
         <span>Beads Kanban UI</span>
         <span className="hidden sm:inline">·</span>
         <a
           href="https://github.com/AvivK5498/beads-kanban-ui"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 hover:text-zinc-900 transition-colors"
+          className="flex items-center gap-1.5 hover:text-t-primary transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

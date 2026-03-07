@@ -136,7 +136,7 @@ export function ProjectCard({
 
       {/* Bottom row: Path left, Open In button right (aligned) */}
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-zinc-500 truncate min-w-0 flex-1" title={path}>
+        <p className="text-sm text-t-muted truncate min-w-0 flex-1" title={path}>
           {path}
         </p>
         <DropdownMenu>
