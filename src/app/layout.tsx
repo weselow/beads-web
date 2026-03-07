@@ -1,4 +1,4 @@
-import { Space_Grotesk, Plus_Jakarta_Sans } from 'next/font/google';
+import { Inter, Space_Grotesk, Space_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 
 import { DevTools } from '@/components/dev-tools';
 import { ThemeInitScript } from '@/components/theme-init';
@@ -7,10 +7,23 @@ import { Toaster } from '@/components/ui/toaster';
 import type { Metadata } from 'next';
 import './globals.css';
 
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
+
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-space-grotesk',
+});
+
+const spaceMono = Space_Mono({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  display: 'swap',
+  variable: '--font-space-mono',
 });
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -30,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`dark ${spaceGrotesk.variable} ${plusJakartaSans.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable} ${spaceMono.variable} ${plusJakartaSans.variable}`} suppressHydrationWarning>
       <head>
         <ThemeInitScript />
       </head>

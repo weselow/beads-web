@@ -334,7 +334,7 @@ export default function KanbanBoard() {
             <div role="alert" className="text-danger">Error loading beads: {beadsError.message}</div>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-4 h-full">
+          <div className="grid grid-cols-4 h-full" style={{ gap: 'var(--column-gap)' }}>
             {COLUMNS.map(({ status, title }) => (
               <KanbanColumn
                 key={status}

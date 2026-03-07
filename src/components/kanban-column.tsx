@@ -106,7 +106,7 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        "flex flex-col h-full min-h-0 rounded-lg",
+        "flex flex-col h-full min-h-0 theme-column",
         "bg-surface-raised/30 border border-b-default/50"
       )}
     >
