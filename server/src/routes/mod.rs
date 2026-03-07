@@ -11,6 +11,7 @@ pub mod fs;
 pub mod git;
 pub mod memory;
 pub mod projects;
+pub mod version;
 pub mod watch;
 pub mod worktree;
 

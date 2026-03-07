@@ -409,6 +409,24 @@ export const dolt = {
 };
 
 /**
+ * Version check response
+ */
+export interface VersionCheckResponse {
+  current: string;
+  latest: string | null;
+  update_available: boolean;
+  download_url: string | null;
+  release_notes: string | null;
+}
+
+/**
+ * Version API
+ */
+export const version = {
+  check: () => fetchApi<VersionCheckResponse>('/api/version/check'),
+};
+
+/**
  * File Watcher (Server-Sent Events)
  */
 export const watch = {

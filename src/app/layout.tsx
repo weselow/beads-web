@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk, Space_Mono, Plus_Jakarta_Sans } from 'next/font/g
 import { GlobalSettingsButton } from '@/components/global-settings-button';
 import { ThemeInitScript } from '@/components/theme-init';
 import { Toaster } from '@/components/ui/toaster';
+import { UpdateBanner } from '@/components/update-banner';
 
 import type { Metadata } from 'next';
 import './globals.css';
@@ -50,6 +51,7 @@ export default function RootLayout({
       <body className="flex min-h-screen flex-col bg-background antialiased transition-colors duration-300">
         <div className="flex-1">{children}</div>
         <GlobalSettingsButton />
+        <UpdateBanner />
         <Toaster />
       </body>
     </html>

@@ -116,6 +116,9 @@ async fn main() {
         info!("Dolt server not detected — will use bd CLI / JSONL fallback");
     }
 
+    // Initialize version check cache
+    let version_cache = routes::version::new_cache();
+
     // Build the router
     let app = Router::new()
         .route("/api/health", get(routes::health))
@@ -156,7 +159,9 @@ async fn main() {
         )
         .route("/api/memory/stats", get(routes::memory::memory_stats))
         .route("/api/watch/beads", get(routes::watch_beads))
+        .route("/api/version/check", get(routes::version::version_check))
         .fallback(serve_static)
+        .layer(Extension(version_cache))
         .layer(Extension(dolt_manager))
         .layer(cors);
 
