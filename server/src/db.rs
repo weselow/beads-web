@@ -40,6 +40,7 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub path: String,
+    pub local_path: Option<String>,
     pub last_opened: String,
     pub created_at: String,
 }
@@ -51,6 +52,7 @@ pub struct ProjectWithTags {
     pub id: String,
     pub name: String,
     pub path: String,
+    pub local_path: Option<String>,
     pub tags: Vec<Tag>,
     pub last_opened: String,
     pub created_at: String,
@@ -66,16 +68,20 @@ pub struct Tag {
 
 /// Input for creating a new project
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateProjectInput {
     pub name: String,
     pub path: String,
+    pub local_path: Option<String>,
 }
 
 /// Input for updating a project
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateProjectInput {
     pub name: Option<String>,
     pub path: Option<String>,
+    pub local_path: Option<String>,
 }
 
 /// Input for creating a new tag
@@ -138,10 +144,11 @@ impl Database {
         Ok(proj_dirs.data_dir().join("settings.db"))
     }
 
-    /// Initializes the database schema
+    /// Initializes the database schema and runs pending migrations
     fn init_schema(&self) -> Result<(), DbError> {
         let conn = self.conn.lock().unwrap();
 
+        // Base schema (v0 — initial tables)
         conn.execute_batch(
             r"
             CREATE TABLE IF NOT EXISTS projects (
@@ -169,8 +176,45 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_projects_last_opened ON projects(last_opened DESC);
             CREATE INDEX IF NOT EXISTS idx_project_tags_project ON project_tags(project_id);
             CREATE INDEX IF NOT EXISTS idx_project_tags_tag ON project_tags(tag_id);
+
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
             ",
         )?;
+
+        // Run pending migrations
+        Self::run_migrations(&conn)?;
+
+        Ok(())
+    }
+
+    /// Runs all pending migrations in order
+    fn run_migrations(conn: &Connection) -> Result<(), DbError> {
+        let current_version: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let migrations: Vec<(i64, &str)> = vec![
+            (1, "ALTER TABLE projects ADD COLUMN local_path TEXT"),
+        ];
+
+        let now = Utc::now().to_rfc3339();
+        for (version, sql) in migrations {
+            if version > current_version {
+                conn.execute_batch(sql)?;
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+                    params![version, now],
+                )?;
+                tracing::info!("Applied migration v{}", version);
+            }
+        }
 
         Ok(())
     }
@@ -188,6 +232,7 @@ impl Database {
                 id: project.id,
                 name: project.name,
                 path: project.path,
+                local_path: project.local_path,
                 tags,
                 last_opened: project.last_opened,
                 created_at: project.created_at,
@@ -201,7 +246,7 @@ impl Database {
     pub fn get_projects(&self) -> Result<Vec<Project>, DbError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, path, last_opened, created_at FROM projects ORDER BY last_opened DESC",
+            "SELECT id, name, path, local_path, last_opened, created_at FROM projects ORDER BY last_opened DESC",
         )?;
 
         let projects = stmt
@@ -210,8 +255,9 @@ impl Database {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     path: row.get(2)?,
-                    last_opened: row.get(3)?,
-                    created_at: row.get(4)?,
+                    local_path: row.get(3)?,
+                    last_opened: row.get(4)?,
+                    created_at: row.get(5)?,
                 })
             })?
             .collect::<SqliteResult<Vec<_>>>()?;
@@ -226,14 +272,15 @@ impl Database {
 
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO projects (id, name, path, last_opened, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, input.name, input.path, now, now],
+            "INSERT INTO projects (id, name, path, local_path, last_opened, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, input.name, input.path, input.local_path, now, now],
         )?;
 
         Ok(Project {
             id,
             name: input.name,
             path: input.path,
+            local_path: input.local_path,
             last_opened: now.clone(),
             created_at: now,
         })
@@ -269,6 +316,13 @@ impl Database {
             )?;
         }
 
+        if let Some(ref local_path) = input.local_path {
+            conn.execute(
+                "UPDATE projects SET local_path = ?1 WHERE id = ?2",
+                params![local_path, id],
+            )?;
+        }
+
         // Update last_opened
         let now = Utc::now().to_rfc3339();
         conn.execute(
@@ -278,15 +332,16 @@ impl Database {
 
         // Fetch and return updated project
         let project = conn.query_row(
-            "SELECT id, name, path, last_opened, created_at FROM projects WHERE id = ?1",
+            "SELECT id, name, path, local_path, last_opened, created_at FROM projects WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Project {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     path: row.get(2)?,
-                    last_opened: row.get(3)?,
-                    created_at: row.get(4)?,
+                    local_path: row.get(3)?,
+                    last_opened: row.get(4)?,
+                    created_at: row.get(5)?,
                 })
             },
         )?;
@@ -441,6 +496,7 @@ mod tests {
             .create_project(CreateProjectInput {
                 name: "Test Project".to_string(),
                 path: "/path/to/project".to_string(),
+                local_path: None,
             })
             .unwrap();
 
@@ -460,6 +516,7 @@ mod tests {
             .create_project(CreateProjectInput {
                 name: "Original".to_string(),
                 path: "/path".to_string(),
+                local_path: None,
             })
             .unwrap();
 
@@ -469,6 +526,7 @@ mod tests {
                 UpdateProjectInput {
                     name: Some("Updated".to_string()),
                     path: None,
+                    local_path: None,
                 },
             )
             .unwrap();
@@ -485,6 +543,7 @@ mod tests {
             .create_project(CreateProjectInput {
                 name: "To Delete".to_string(),
                 path: "/delete/me".to_string(),
+                local_path: None,
             })
             .unwrap();
 
@@ -520,6 +579,7 @@ mod tests {
             .create_project(CreateProjectInput {
                 name: "Project".to_string(),
                 path: "/project".to_string(),
+                local_path: None,
             })
             .unwrap();
 
@@ -550,6 +610,7 @@ mod tests {
             .create_project(CreateProjectInput {
                 name: "Test".to_string(),
                 path: "/test".to_string(),
+                local_path: None,
             })
             .unwrap();
 

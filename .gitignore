@@ -66,3 +66,9 @@ Vent
 .history/
 .playwright-mcp/
 agentform/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Extra build targets
+/server/target2/

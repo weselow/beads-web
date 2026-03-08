@@ -235,6 +235,7 @@ export default function ProjectsPage() {
                   id={project.id}
                   name={project.name}
                   path={project.path}
+                  localPath={project.localPath}
                   tags={project.tags}
                   beadCounts={project.beadCounts}
                   onTagsChange={(tags) => updateProjectTags(project.id, tags)}

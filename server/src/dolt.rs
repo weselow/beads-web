@@ -248,10 +248,42 @@ impl DoltManager {
 
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
+        // First, query the table schema to find all NOT NULL columns without defaults
+        // so we can provide empty values for them
+        let schema_query = format!(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
+             WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'issues' \
+             AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL \
+             AND COLUMN_NAME NOT IN ('id', 'title', 'description', 'status', 'priority', \
+             'issue_type', 'owner', 'created_at', 'updated_at')"
+        );
+        let extra_cols: Vec<String> = conn.exec_map(
+            &schema_query,
+            mysql_async::params! { "db" => db_name },
+            |col_name: String| col_name,
+        ).await.unwrap_or_default();
+
+        // Build INSERT with all required columns
+        let mut columns = vec![
+            "id", "title", "description", "status", "priority",
+            "issue_type", "owner", "created_at", "updated_at",
+        ];
+        let mut values = vec![
+            ":id", ":title", ":desc", "'open'", ":priority",
+            ":type", "'web-ui'", ":now", ":now",
+        ];
+
+        // Add empty string for any extra NOT NULL columns
+        for col in &extra_cols {
+            columns.push(col);
+            values.push("''");
+        }
+
         let query = format!(
-            "INSERT INTO `{}`.issues (id, title, description, status, priority, issue_type, owner, created_at, updated_at) \
-             VALUES (:id, :title, :desc, 'open', :priority, :type, 'web-ui', :now, :now)",
-            db_name
+            "INSERT INTO `{}`.issues ({}) VALUES ({})",
+            db_name,
+            columns.iter().map(|c| format!("`{}`", c)).collect::<Vec<_>>().join(", "),
+            values.join(", "),
         );
         conn.exec_drop(
             &query,
@@ -277,10 +309,12 @@ impl DoltManager {
             ).await.map_err(|e| DoltError::QueryFailed(format!("dependency: {}", e)))?;
         }
 
-        // Dolt commit
+        // Dolt commit — must USE the database first
+        let use_query = format!("USE `{}`", db_name);
+        conn.query_drop(&use_query).await
+            .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
         let commit_query = format!(
-            "SELECT DOLT_COMMIT('-Am', 'web-ui: create {}') FROM `{}`",
-            id, db_name
+            "CALL DOLT_COMMIT('-Am', 'web-ui: create {}')", id
         );
         conn.query_drop(&commit_query).await
             .map_err(|e| DoltError::QueryFailed(format!("dolt_commit: {}", e)))?;
@@ -335,10 +369,12 @@ impl DoltManager {
             .await
             .map_err(|e| DoltError::QueryFailed(format!("update: {}", e)))?;
 
-        // Dolt commit
+        // Dolt commit — must USE the database first
+        let use_query = format!("USE `{}`", db_name);
+        conn.query_drop(&use_query).await
+            .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
         let commit_query = format!(
-            "SELECT DOLT_COMMIT('-Am', 'web-ui: update {}') FROM `{}`",
-            id, db_name
+            "CALL DOLT_COMMIT('-Am', 'web-ui: update {}')", id
         );
         conn.query_drop(&commit_query).await
             .map_err(|e| DoltError::QueryFailed(format!("dolt_commit: {}", e)))?;

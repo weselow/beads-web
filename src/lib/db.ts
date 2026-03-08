@@ -16,12 +16,14 @@ export type { Project, Tag };
 export interface CreateProjectInput {
   name: string;
   path: string;
+  localPath?: string;
 }
 
 export interface UpdateProjectInput {
   id: string;
   name?: string;
   path?: string;
+  localPath?: string;
 }
 
 export interface CreateTagInput {

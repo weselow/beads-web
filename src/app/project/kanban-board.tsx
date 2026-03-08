@@ -4,17 +4,17 @@ import { useMemo, useRef, useState, useCallback, useEffect } from "react";
 
 import { useSearchParams, useRouter } from "next/navigation";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, EllipsisVertical } from "lucide-react";
 
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { AgentsPanel } from "@/components/agents-panel";
 import { BeadDetail } from "@/components/bead-detail";
 import { CommentList } from "@/components/comment-list";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
-import { EditableProjectName } from "@/components/editable-project-name";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { KanbanColumn } from "@/components/kanban-column";
 import { MemoryPanel } from "@/components/memory-panel";
+import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
 import { QuickFilterBar } from "@/components/quick-filter-bar";
 import {
   AlertDialog,
@@ -93,9 +93,14 @@ export default function KanbanBoard() {
   // Issue type filter state (epics vs tasks)
   const [typeFilter, setTypeFilter] = useState<IssueTypeFilter>("all");
 
+  // Dolt project detection and filesystem path resolution
+  const isDolt = isDoltProject(project?.path);
+  const isDoltOnly = isDolt && !project?.localPath;
+  const fsPath = isDolt ? (project?.localPath ?? "") : (project?.path ?? "");
+
   // GitHub status check
   const { hasRemote, isAuthenticated, isLoading: githubStatusLoading } = useGitHubStatus(
-    project?.path ?? null
+    fsPath || null
   );
 
   // Track whether the GitHub warning has been dismissed (session-only)
@@ -112,6 +117,9 @@ export default function KanbanBoard() {
 
   // Create bead dialog state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Project settings dialog state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Show GitHub warning if project loaded, status checked, and either no remote or not authenticated
   const showGitHubWarning = !projectLoading &&
@@ -143,11 +151,9 @@ export default function KanbanBoard() {
   // Filter out closed beads to avoid unnecessary polling for finalized tasks
   const beadIds = useMemo(() => beads.filter(b => b.status !== 'closed').map(b => b.id), [beads]);
 
-  const isDoltOnly = isDoltProject(project?.path);
-
   // Worktree statuses for PR workflow (skip for dolt-only projects)
   const { statuses: worktreeStatuses } = useWorktreeStatuses(
-    isDoltOnly ? "" : (project?.path ?? ""),
+    isDoltOnly ? "" : fsPath,
     isDoltOnly ? [] : beadIds
   );
 
@@ -299,11 +305,16 @@ export default function KanbanBoard() {
               <span className="sr-only">Back to projects</span>
             </a>
           </Button>
-          <EditableProjectName
-            projectId={project.id}
-            initialName={project.name}
-            onNameUpdated={refetchProject}
-          />
+          <h1 className="text-lg font-semibold truncate">{project.name}</h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            aria-label="Project settings"
+            onClick={() => setIsSettingsOpen(true)}
+          >
+            <EllipsisVertical className="h-3.5 w-3.5" />
+          </Button>
         </div>
       )}
 
@@ -412,11 +423,11 @@ export default function KanbanBoard() {
 
       {/* Memory Panel (requires filesystem path) */}
       <ErrorBoundary label="Memory Panel">
-      {project?.path && !isDoltOnly && (
+      {fsPath && !isDoltOnly && (
         <MemoryPanel
           open={isMemoryOpen}
           onOpenChange={setIsMemoryOpen}
-          projectPath={project.path}
+          projectPath={fsPath}
           onNavigateToBead={handleMemoryNavigateToBead}
         />
       )}
@@ -424,14 +435,27 @@ export default function KanbanBoard() {
 
       {/* Agents Panel (requires filesystem path) */}
       <ErrorBoundary label="Agents Panel">
-      {project?.path && !isDoltOnly && (
+      {fsPath && !isDoltOnly && (
         <AgentsPanel
           open={isAgentsOpen}
           onOpenChange={setIsAgentsOpen}
-          projectPath={project.path}
+          projectPath={fsPath}
         />
       )}
       </ErrorBoundary>
+
+      {/* Project Settings Dialog */}
+      {project && (
+        <ProjectSettingsDialog
+          open={isSettingsOpen}
+          onOpenChange={setIsSettingsOpen}
+          projectId={project.id}
+          projectName={project.name}
+          projectPath={project.path}
+          projectLocalPath={project.localPath}
+          onUpdated={refetchProject}
+        />
+      )}
 
       {/* Create Bead Dialog */}
       {project?.path && (
