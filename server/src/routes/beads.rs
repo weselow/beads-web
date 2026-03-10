@@ -325,7 +325,6 @@ pub async fn read_beads(
     }
 
     // Three-tier fallback: Dolt SQL → bd CLI → JSONL
-    let mut skip_cli = false;
 
     // Tier 1: Try Dolt SQL (direct MySQL connection)
     let beads = 'fallback: {
@@ -334,26 +333,24 @@ pub async fn read_beads(
                 match dolt_manager.read_beads(&db_name).await {
                     Ok(b) => break 'fallback b,
                     Err(crate::dolt::DoltError::DatabaseNotFound(_)) => {
-                        tracing::debug!("Dolt database {} not found, skipping to JSONL", db_name);
-                        skip_cli = true;
+                        tracing::info!("Dolt database {} not found on SQL server, trying bd CLI", db_name);
+                        // Don't skip CLI — bd can read from local .beads/dolt in direct mode
                     }
                     Err(e) => {
-                        tracing::debug!("Dolt SQL failed for {} ({}), trying bd CLI", db_name, e);
+                        tracing::info!("Dolt SQL failed for {} ({}), trying bd CLI", db_name, e);
                     }
                 }
             }
         }
 
-        // Tier 2: Try bd CLI (skip if Dolt already said DB doesn't exist)
-        if !skip_cli {
-            match read_beads_from_cli(&project_path).await {
-                Ok(b) => {
-                    tracing::info!("Read {} beads from bd CLI for {}", b.len(), params.path);
-                    break 'fallback b;
-                }
-                Err(cli_err) => {
-                    tracing::debug!("bd CLI unavailable ({}), falling back to JSONL", cli_err);
-                }
+        // Tier 2: Try bd CLI
+        match read_beads_from_cli(&project_path).await {
+            Ok(b) => {
+                tracing::info!("Read {} beads from bd CLI for {}", b.len(), params.path);
+                break 'fallback b;
+            }
+            Err(cli_err) => {
+                tracing::warn!("bd CLI failed for {}: {}", params.path, cli_err);
             }
         }
 
