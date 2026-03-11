@@ -72,3 +72,15 @@ agentform/
 
 # Extra build targets
 /server/target2/
+
+# Dolt server runtime files
+.dolt/
+.doltcfg/
+.dolt_dropped_databases/
+config.yaml
+beads_*/
+
+# Compiled binaries
+beads-web-linux-*
+beads-web-win-*
+beads-web-darwin-*
