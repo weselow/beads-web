@@ -116,9 +116,30 @@ async fn main() {
         info!("Dolt server not detected — will use bd CLI / JSONL fallback");
     }
 
-    // Check for bd CLI availability
+    // Check for bd CLI availability and compatibility
     if let Some(bd) = routes::find_bd() {
         info!("bd CLI found: {}", bd.display());
+        if let Ok(output) = std::process::Command::new(bd).arg("--version").output() {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                info!("bd version: {}", version.trim());
+            }
+        }
+        // Verify --json flag works (older bd versions output plain text)
+        let test_dir = std::env::temp_dir();
+        if let Ok(output) = std::process::Command::new(bd)
+            .args(["list", "--json", "--limit", "1"])
+            .current_dir(&test_dir)
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let trimmed = stdout.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('[') {
+                tracing::warn!("⚠ bd CLI does not support --json output");
+                tracing::warn!("  Beads will not load for filesystem projects");
+                tracing::warn!("  Please update: npm install -g beads");
+            }
+        }
     } else {
         tracing::warn!("⚠ bd CLI not found — beads read/write will not work for filesystem projects");
         tracing::warn!("  Install: https://github.com/steveyegge/beads");
@@ -137,6 +158,7 @@ async fn main() {
         // Dolt endpoints
         .route("/api/dolt/status", get(routes::dolt::dolt_status))
         .route("/api/dolt/databases", get(routes::dolt::dolt_databases))
+        .route("/api/dolt/servers", get(routes::dolt::dolt_servers))
         .route("/api/fs/list", get(routes::fs::list_directory))
         .route("/api/fs/exists", get(routes::fs::path_exists))
         .route("/api/fs/read", get(routes::fs::read_file))

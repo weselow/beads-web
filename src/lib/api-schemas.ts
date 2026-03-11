@@ -35,6 +35,7 @@ export const BeadSchema = z.object({
 
 export const BeadsResponseSchema = z.object({
   beads: z.array(BeadSchema),
+  source: z.string().optional(),
 });
 
 export const PRChecksSchema = z.object({

@@ -30,19 +30,19 @@ export function useProjects(): UseProjectsResult {
       setError(null);
       const data = await getProjectsWithTags();
 
-      // Fetch bead counts for all projects in parallel
+      // Fetch bead counts and data source for all projects in parallel
       const projectsWithCounts = await Promise.all(
         data.map(async (project) => {
           try {
-            const beads = await loadProjectBeads(project.path);
-            const grouped = groupBeadsByStatus(beads);
+            const result = await loadProjectBeads(project.path, { withSource: true });
+            const grouped = groupBeadsByStatus(result.beads);
             const beadCounts: BeadCounts = {
               open: grouped.open.length,
               in_progress: grouped.in_progress.length,
               inreview: grouped.inreview.length,
               closed: grouped.closed.length,
             };
-            return { ...project, beadCounts };
+            return { ...project, beadCounts, dataSource: result.source };
           } catch {
             // If loading beads fails, return project with zero counts
             return {

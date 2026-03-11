@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-import { Folder, Loader2, FolderSearch, Database } from "lucide-react";
+import { Folder, Loader2, FolderSearch, Database, Server } from "lucide-react";
 
 import { FolderBrowser } from "@/components/folder-browser";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import * as api from "@/lib/api";
-import type { DoltDatabase } from "@/lib/api";
+import type { DoltDatabase, DoltServer } from "@/lib/api";
 import type { CreateProjectInput } from "@/lib/db";
 
 
@@ -44,13 +44,16 @@ export function AddProjectDialog({
   const [browserPath, setBrowserPath] = useState("");
   const [doltDatabases, setDoltDatabases] = useState<DoltDatabase[]>([]);
   const [doltLoading, setDoltLoading] = useState(false);
+  const [doltServers, setDoltServers] = useState<DoltServer[]>([]);
+  const [serversLoading, setServersLoading] = useState(false);
   const { toast } = useToast();
 
-  // Fetch Dolt databases when dialog opens
+  // Fetch Dolt databases and per-project servers when dialog opens
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     setDoltLoading(true);
+    setServersLoading(true);
     api.dolt.databases()
       .then((res) => {
         if (!cancelled) setDoltDatabases(res.databases || []);
@@ -60,6 +63,16 @@ export function AddProjectDialog({
       })
       .finally(() => {
         if (!cancelled) setDoltLoading(false);
+      });
+    api.dolt.servers()
+      .then((res) => {
+        if (!cancelled) setDoltServers(res.servers || []);
+      })
+      .catch(() => {
+        if (!cancelled) setDoltServers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setServersLoading(false);
       });
     return () => { cancelled = true; };
   }, [isOpen]);
@@ -129,6 +142,40 @@ export function AddProjectDialog({
   const newDoltDatabases = doltDatabases.filter(
     (db) => !existingNamesLower.includes(db.project_name.toLowerCase())
   );
+
+  // Filter out per-project servers already added (by name)
+  const newDoltServers = doltServers.filter(
+    (s) => !existingNamesLower.includes(
+      s.project_path.split(/[/\\]/).pop()?.toLowerCase() || ""
+    )
+  );
+
+  const handleServerQuickAdd = async (server: DoltServer) => {
+    setIsSubmitting(true);
+    try {
+      const pathParts = server.project_path.split(/[/\\]/);
+      const name = pathParts[pathParts.length - 1] || "Untitled";
+      await onAddProject({
+        name,
+        path: server.project_path,
+      });
+      toast({
+        title: "Project added",
+        description: `"${name}" added from per-project Dolt server (port ${server.port}).`,
+      });
+      resetState();
+      onOpenChange(false);
+    } catch (err) {
+      console.error("Error adding project from server:", err);
+      toast({
+        title: "Error",
+        description: "Failed to add project. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleDoltQuickAdd = async (db: DoltDatabase) => {
     setIsSubmitting(true);
@@ -201,7 +248,7 @@ export function AddProjectDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className={browsing ? "sm:max-w-lg" : "sm:max-w-md"}>
+      <DialogContent className={browsing ? "sm:max-w-lg" : (newDoltServers.length > 0 || newDoltDatabases.length > 0) ? "sm:max-w-lg" : "sm:max-w-md"}>
         <DialogHeader>
           <DialogTitle>Add Project</DialogTitle>
           <DialogDescription>
@@ -213,7 +260,42 @@ export function AddProjectDialog({
 
         {!showNameInput ? (
           <div className="flex flex-col gap-4 py-4">
-            {/* Dolt auto-discovery section */}
+            {/* Per-project Dolt servers discovery */}
+            {!browsing && !serversLoading && newDoltServers.length > 0 && (
+              <div className="space-y-2">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-t-secondary">
+                  <Server className="size-3.5" />
+                  Per-project Dolt servers
+                </label>
+                <div className="space-y-1.5">
+                  {newDoltServers.map((server) => {
+                    const pathParts = server.project_path.split(/[/\\]/);
+                    const name = pathParts[pathParts.length - 1] || "Unknown";
+                    return (
+                      <button
+                        key={`${server.pid}-${server.port}`}
+                        type="button"
+                        onClick={() => handleServerQuickAdd(server)}
+                        disabled={isSubmitting}
+                        className="flex w-full items-center justify-between rounded-md border border-b-strong bg-surface-overlay/50 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-overlay"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium text-t-primary">{name}</span>
+                          <span className="ml-2 truncate text-xs text-t-muted">{server.project_path}</span>
+                        </div>
+                        <span className="ml-2 shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+                          :{server.port}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-t-muted">
+                  Auto-discovered from running Dolt servers. Click to add with full path.
+                </p>
+              </div>
+            )}
+            {/* Dolt central server databases */}
             {!browsing && !doltLoading && newDoltDatabases.length > 0 && (
               <div className="space-y-2">
                 <label className="flex items-center gap-1.5 text-sm font-medium text-t-secondary">

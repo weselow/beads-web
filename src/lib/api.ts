@@ -141,7 +141,7 @@ export interface CreateBeadInput {
 
 export const beads = {
   read: async (path: string) => {
-    const data = await fetchApi<{ beads: Bead[] }>(
+    const data = await fetchApi<{ beads: Bead[]; source?: string }>(
       `/api/beads?path=${encodeURIComponent(path)}`
     );
     BeadsResponseSchema.parse(data);
@@ -401,11 +401,23 @@ export interface DoltDatabase {
 }
 
 /**
+ * Discovered running Dolt server process
+ */
+export interface DoltServer {
+  pid: number;
+  port: number;
+  project_path: string;
+  db_name: string | null;
+  source: 'auto-start' | 'central';
+}
+
+/**
  * Dolt API
  */
 export const dolt = {
   status: () => fetchApi<DoltStatus>('/api/dolt/status'),
   databases: () => fetchApi<{ databases: DoltDatabase[] }>('/api/dolt/databases'),
+  servers: () => fetchApi<{ servers: DoltServer[] }>('/api/dolt/servers'),
 };
 
 /**

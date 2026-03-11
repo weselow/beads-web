@@ -1,4 +1,4 @@
-# Beads Kanban Ui
+# Beads Web
 
 ## Project Overview
 
@@ -93,8 +93,26 @@ The more specific the LEARNED comment, the more useful it is next time.
 
 ## Current State
 
-- Forked from AvivK5498/Beads-Kanban-UI, now independent project (beads-web)
-- Production branch is the active working branch
+- Independent project (beads-web), forked from AvivK5498/Beads-Kanban-UI
+- GitHub: https://github.com/weselow/beads-web
+- npm package name: `beads-web`
+- Default branch: `main` (merged from production, production branch kept for now)
 - 7 themes implemented with CSS variables and persistence
 - Dolt direct SQL integration working
 - Windows compatibility fixed (multi-drive paths, validation)
+- GitHub Releases CI configured (`.github/workflows/release.yml`) — cross-platform binaries on tag push
+- Listed in [beads COMMUNITY_TOOLS.md](https://github.com/steveyegge/beads/blob/main/docs/COMMUNITY_TOOLS.md)
+
+## Distribution
+
+Single binary — frontend is embedded via rust-embed. No npm publish needed.
+
+- Tag `v*` triggers GitHub Actions → builds for macOS arm64/x64, Linux x64, Windows x64
+- Users download binary from GitHub Releases, run it, open http://localhost:3007
+- `next dev` requires commenting out `output: 'export'` in `next.config.js`
+
+## Git Notes
+
+- Upstream remote removed — fully independent from original repo
+- Tag named "main" was deleted (caused ambiguous ref errors with branch "main")
+- PR branches kept: feature/*, fix/* that were submitted to original repo

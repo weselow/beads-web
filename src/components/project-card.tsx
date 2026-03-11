@@ -51,6 +51,7 @@ interface ProjectCardProps {
   localPath?: string;
   tags: Tag[];
   beadCounts?: BeadCounts;
+  dataSource?: string;
   onTagsChange?: (tags: Tag[]) => void;
 }
 
@@ -61,6 +62,7 @@ export function ProjectCard({
   localPath,
   tags,
   beadCounts = { open: 0, in_progress: 0, inreview: 0, closed: 0 },
+  dataSource,
   onTagsChange,
 }: ProjectCardProps) {
   const router = useRouter();
@@ -155,9 +157,20 @@ export function ProjectCard({
 
       {/* Bottom row: Path left, Open In button right (aligned) */}
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-t-muted truncate min-w-0 flex-1" title={path}>
-          {path}
-        </p>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <p className="text-sm text-t-muted truncate min-w-0" title={path}>
+            {path}
+          </p>
+          {dataSource && (
+            <span className="inline-flex shrink-0 items-center rounded-full bg-surface-overlay px-2 py-0.5 text-[10px] font-medium text-t-muted">
+              {dataSource === 'dolt-project' ? 'Dolt (project)' :
+               dataSource === 'dolt-central' ? 'Dolt (central)' :
+               dataSource === 'dolt-direct' ? 'Dolt (direct)' :
+               dataSource === 'cli' ? 'CLI' :
+               dataSource === 'jsonl' ? 'JSONL' : dataSource}
+            </span>
+          )}
+        </div>
         {fsPath && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>

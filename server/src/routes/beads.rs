@@ -296,7 +296,7 @@ pub async fn read_beads(
         return match dolt_manager.read_beads(db_name).await {
             Ok(beads) => {
                 let beads = post_process_beads(beads);
-                (StatusCode::OK, Json(serde_json::json!({ "beads": beads })))
+                (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-direct" })))
             }
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -324,14 +324,36 @@ pub async fn read_beads(
         );
     }
 
+    // Tier 0: Try per-project Dolt server via port file
+    let port_file = beads_dir.join("dolt-server.port");
+    if port_file.exists() {
+        if let Ok(port_str) = std::fs::read_to_string(&port_file) {
+            if let Ok(port) = port_str.trim().parse::<u16>() {
+                if let Some(db_name) = dolt::database_name_for_project(&project_path) {
+                    tracing::info!("Trying per-project Dolt server on port {} for db {}", port, db_name);
+                    match dolt::read_beads_on_port(port, &db_name).await {
+                        Ok(beads) => {
+                            tracing::info!("Read {} beads from per-project Dolt (port {})", beads.len(), port);
+                            let beads = post_process_beads(beads);
+                            return (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-project" })));
+                        }
+                        Err(e) => {
+                            tracing::warn!("Per-project Dolt server on port {} failed: {}, falling back", port, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Three-tier fallback: Dolt SQL → bd CLI → JSONL
 
     // Tier 1: Try Dolt SQL (direct MySQL connection)
-    let beads = 'fallback: {
+    let (beads, source) = 'fallback: {
         if dolt_manager.is_available() {
             if let Some(db_name) = dolt::database_name_for_project(&project_path) {
                 match dolt_manager.read_beads(&db_name).await {
-                    Ok(b) => break 'fallback b,
+                    Ok(b) => break 'fallback (b, "dolt-central"),
                     Err(crate::dolt::DoltError::DatabaseNotFound(_)) => {
                         tracing::info!("Dolt database {} not found on SQL server, trying bd CLI", db_name);
                         // Don't skip CLI — bd can read from local .beads/dolt in direct mode
@@ -347,7 +369,7 @@ pub async fn read_beads(
         match read_beads_from_cli(&project_path).await {
             Ok(b) => {
                 tracing::info!("Read {} beads from bd CLI for {}", b.len(), params.path);
-                break 'fallback b;
+                break 'fallback (b, "cli");
             }
             Err(cli_err) => {
                 tracing::warn!("bd CLI failed for {}: {}", params.path, cli_err);
@@ -363,7 +385,7 @@ pub async fn read_beads(
             );
         }
         match read_beads_from_jsonl(&issues_path) {
-            Ok(b) => b,
+            Ok(b) => (b, "jsonl"),
             Err(e) => {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -374,7 +396,7 @@ pub async fn read_beads(
     };
 
     let beads = post_process_beads(beads);
-    (StatusCode::OK, Json(serde_json::json!({ "beads": beads })))
+    (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": source })))
 }
 
 /// Request body for creating a new bead.

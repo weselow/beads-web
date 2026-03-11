@@ -104,7 +104,14 @@ export function getUnknownStatusNames(beads: Bead[]): string[] {
  * const beads = await loadProjectBeads('/path/to/project');
  * ```
  */
-export async function loadProjectBeads(projectPath: string): Promise<Bead[]> {
+export interface LoadProjectBeadsResult {
+  beads: Bead[];
+  source?: string;
+}
+
+export async function loadProjectBeads(projectPath: string): Promise<Bead[]>;
+export async function loadProjectBeads(projectPath: string, options: { withSource: true }): Promise<LoadProjectBeadsResult>;
+export async function loadProjectBeads(projectPath: string, options?: { withSource: true }): Promise<Bead[] | LoadProjectBeadsResult> {
   try {
     const result = await api.beads.read(projectPath);
     // Map statuses, filter tombstones, ensure comments array
@@ -116,9 +123,15 @@ export async function loadProjectBeads(projectPath: string): Promise<Bead[]> {
         mapped.push(mappedBead);
       }
     }
+    if (options?.withSource) {
+      return { beads: mapped, source: result.source };
+    }
     return mapped;
   } catch (error) {
     console.error(`Failed to load beads from ${projectPath}:`, error);
+    if (options?.withSource) {
+      return { beads: [], source: undefined };
+    }
     return [];
   }
 }

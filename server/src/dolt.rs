@@ -97,136 +97,7 @@ impl DoltManager {
     pub async fn read_beads(&self, db_name: &str) -> Result<Vec<Bead>, DoltError> {
         let mut conn = self.pool.get_conn().await
             .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
-
-        // Check database exists
-        let db_exists: Option<Row> = conn.exec_first(
-            "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = :db",
-            mysql_async::params! { "db" => db_name },
-        ).await.map_err(|e| DoltError::QueryFailed(e.to_string()))?;
-
-        if db_exists.is_none() {
-            return Err(DoltError::DatabaseNotFound(db_name.to_string()));
-        }
-
-        // Read issues — format datetime columns as ISO strings in SQL
-        let issues_query = format!(
-            "SELECT id, title, description, `design`, status, priority, issue_type, \
-             owner, assignee, \
-             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at, \
-             created_by, \
-             DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%sZ') AS updated_at, \
-             DATE_FORMAT(closed_at, '%Y-%m-%dT%H:%i:%sZ') AS closed_at, \
-             close_reason \
-             FROM `{}`.issues",
-            db_name
-        );
-        let issue_rows: Vec<Row> = conn.query(&issues_query).await
-            .map_err(|e| DoltError::QueryFailed(format!("issues: {}", e)))?;
-
-        // Helper to safely get nullable string columns (mysql_async panics
-        // on NULL → String conversion, so we must go through Option<Option<String>>).
-        fn get_opt_str(row: &Row, col: &str) -> Option<String> {
-            row.get::<Option<String>, _>(col).flatten()
-        }
-        fn get_str(row: &Row, col: &str) -> String {
-            get_opt_str(row, col).unwrap_or_default()
-        }
-
-        let mut beads: Vec<Bead> = issue_rows.iter().map(|row| {
-            Bead {
-                id: get_str(row, "id"),
-                title: get_str(row, "title"),
-                description: get_opt_str(row, "description"),
-                status: get_opt_str(row, "status").unwrap_or_else(|| "open".to_string()),
-                priority: row.get::<Option<i32>, _>("priority").flatten(),
-                issue_type: get_opt_str(row, "issue_type"),
-                owner: get_opt_str(row, "owner"),
-                created_at: get_opt_str(row, "created_at"),
-                created_by: get_opt_str(row, "created_by"),
-                updated_at: get_opt_str(row, "updated_at"),
-                closed_at: get_opt_str(row, "closed_at"),
-                close_reason: get_opt_str(row, "close_reason"),
-                design_doc: get_opt_str(row, "design"),
-                parent_id: None,
-                children: None,
-                deps: None,
-                relates_to: None,
-                comments: None,
-                dependencies: None,
-            }
-        }).collect();
-
-        // Read comments
-        let comments_query = format!(
-            "SELECT id, issue_id, author, text, \
-             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
-             FROM `{}`.comments ORDER BY issue_id, id",
-            db_name
-        );
-        let comment_rows: Vec<Row> = conn.query(&comments_query).await
-            .map_err(|e| DoltError::QueryFailed(format!("comments: {}", e)))?;
-
-        let mut comments_map: HashMap<String, Vec<Comment>> = HashMap::new();
-        for row in &comment_rows {
-            let issue_id = get_str(row, "issue_id");
-            let comment = Comment {
-                id: row.get::<Option<i64>, _>("id").flatten().unwrap_or(0),
-                issue_id: issue_id.clone(),
-                author: get_str(row, "author"),
-                text: get_str(row, "text"),
-                created_at: get_str(row, "created_at"),
-            };
-            comments_map.entry(issue_id).or_default().push(comment);
-        }
-
-        // Read dependencies
-        let deps_query = format!(
-            "SELECT issue_id, depends_on_id, `type` FROM `{}`.dependencies",
-            db_name
-        );
-        let dep_rows: Vec<Row> = conn.query(&deps_query).await
-            .map_err(|e| DoltError::QueryFailed(format!("dependencies: {}", e)))?;
-
-        // Group dependencies by issue_id
-        let mut parent_map: HashMap<String, String> = HashMap::new();
-        let mut blocking_map: HashMap<String, Vec<String>> = HashMap::new();
-        let mut related_map: HashMap<String, Vec<String>> = HashMap::new();
-
-        for row in &dep_rows {
-            let issue_id = get_str(row, "issue_id");
-            let depends_on = get_str(row, "depends_on_id");
-            let dep_type = get_str(row, "type");
-
-            match dep_type.as_str() {
-                "parent-child" | "parent" => {
-                    parent_map.insert(issue_id, depends_on);
-                }
-                "relates-to" | "related" => {
-                    related_map.entry(issue_id).or_default().push(depends_on);
-                }
-                _ => {
-                    // "blocks", "blocking", or any other type → blocking dep
-                    blocking_map.entry(issue_id).or_default().push(depends_on);
-                }
-            }
-        }
-
-        // Merge comments, dependencies into beads
-        for bead in &mut beads {
-            if let Some(bead_comments) = comments_map.remove(&bead.id) {
-                bead.comments = Some(bead_comments);
-            }
-            if let Some(parent_id) = parent_map.remove(&bead.id) {
-                bead.parent_id = Some(parent_id);
-            }
-            if let Some(blocking) = blocking_map.remove(&bead.id) {
-                bead.deps = Some(blocking);
-            }
-            if let Some(related) = related_map.remove(&bead.id) {
-                bead.relates_to = Some(related);
-            }
-        }
-
+        let beads = read_beads_from_conn(&mut conn, db_name).await?;
         self.available.store(true, Ordering::Relaxed);
         info!("Read {} beads from Dolt SQL (db: {})", beads.len(), db_name);
         Ok(beads)
@@ -383,6 +254,172 @@ impl DoltManager {
         Ok(())
     }
 
+}
+
+/// Reads beads from a Dolt server on a specific port.
+/// Creates a temporary connection pool to the given port, reads data, then drops it.
+pub async fn read_beads_on_port(port: u16, db_name: &str) -> Result<Vec<Bead>, DoltError> {
+    let pool_opts = PoolOpts::default()
+        .with_constraints(PoolConstraints::new(0, 2).unwrap());
+
+    let opts: Opts = OptsBuilder::default()
+        .ip_or_hostname(DOLT_HOST)
+        .tcp_port(port)
+        .user(Some(DOLT_USER))
+        .pool_opts(pool_opts)
+        .into();
+
+    let pool = Pool::new(opts);
+    let mut conn = pool.get_conn().await
+        .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
+
+    let result = read_beads_from_conn(&mut conn, db_name).await;
+
+    drop(conn);
+    if let Err(e) = pool.disconnect().await {
+        tracing::warn!("Failed to disconnect temporary pool (port {}): {}", port, e);
+    }
+
+    let beads = result?;
+    info!("Read {} beads from per-project Dolt SQL (port: {}, db: {})", beads.len(), port, db_name);
+    Ok(beads)
+}
+
+/// Shared logic for reading beads from a Dolt MySQL connection.
+///
+/// Reads issues, comments, and dependencies from the given database,
+/// then merges them into a single `Vec<Bead>`.
+async fn read_beads_from_conn(
+    conn: &mut mysql_async::Conn,
+    db_name: &str,
+) -> Result<Vec<Bead>, DoltError> {
+    // Check database exists
+    let db_exists: Option<Row> = conn.exec_first(
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = :db",
+        mysql_async::params! { "db" => db_name },
+    ).await.map_err(|e| DoltError::QueryFailed(e.to_string()))?;
+
+    if db_exists.is_none() {
+        return Err(DoltError::DatabaseNotFound(db_name.to_string()));
+    }
+
+    let beads = query_issues(conn, db_name).await?;
+    let mut beads = merge_comments(conn, db_name, beads).await?;
+    merge_dependencies(conn, db_name, &mut beads).await?;
+    Ok(beads)
+}
+
+/// Helper to safely get nullable string columns from a MySQL row.
+fn get_opt_str(row: &Row, col: &str) -> Option<String> {
+    row.get::<Option<String>, _>(col).flatten()
+}
+
+fn get_str(row: &Row, col: &str) -> String {
+    get_opt_str(row, col).unwrap_or_default()
+}
+
+/// Queries issues from a Dolt database.
+async fn query_issues(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Vec<Bead>, DoltError> {
+    let query = format!(
+        "SELECT id, title, description, `design`, status, priority, issue_type, \
+         owner, assignee, \
+         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at, \
+         created_by, \
+         DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%sZ') AS updated_at, \
+         DATE_FORMAT(closed_at, '%Y-%m-%dT%H:%i:%sZ') AS closed_at, \
+         close_reason \
+         FROM `{}`.issues",
+        db_name
+    );
+    let rows: Vec<Row> = conn.query(&query).await
+        .map_err(|e| DoltError::QueryFailed(format!("issues: {}", e)))?;
+
+    Ok(rows.iter().map(|row| Bead {
+        id: get_str(row, "id"),
+        title: get_str(row, "title"),
+        description: get_opt_str(row, "description"),
+        status: get_opt_str(row, "status").unwrap_or_else(|| "open".to_string()),
+        priority: row.get::<Option<i32>, _>("priority").flatten(),
+        issue_type: get_opt_str(row, "issue_type"),
+        owner: get_opt_str(row, "owner"),
+        created_at: get_opt_str(row, "created_at"),
+        created_by: get_opt_str(row, "created_by"),
+        updated_at: get_opt_str(row, "updated_at"),
+        closed_at: get_opt_str(row, "closed_at"),
+        close_reason: get_opt_str(row, "close_reason"),
+        design_doc: get_opt_str(row, "design"),
+        parent_id: None, children: None, deps: None,
+        relates_to: None, comments: None, dependencies: None,
+    }).collect())
+}
+
+/// Queries comments and merges them into beads.
+async fn merge_comments(
+    conn: &mut mysql_async::Conn,
+    db_name: &str,
+    mut beads: Vec<Bead>,
+) -> Result<Vec<Bead>, DoltError> {
+    let query = format!(
+        "SELECT id, issue_id, author, text, \
+         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
+         FROM `{}`.comments ORDER BY issue_id, id",
+        db_name
+    );
+    let rows: Vec<Row> = conn.query(&query).await
+        .map_err(|e| DoltError::QueryFailed(format!("comments: {}", e)))?;
+
+    let mut map: HashMap<String, Vec<Comment>> = HashMap::new();
+    for row in &rows {
+        let issue_id = get_str(row, "issue_id");
+        map.entry(issue_id.clone()).or_default().push(Comment {
+            id: row.get::<Option<i64>, _>("id").flatten().unwrap_or(0),
+            issue_id,
+            author: get_str(row, "author"),
+            text: get_str(row, "text"),
+            created_at: get_str(row, "created_at"),
+        });
+    }
+    for bead in &mut beads {
+        if let Some(comments) = map.remove(&bead.id) {
+            bead.comments = Some(comments);
+        }
+    }
+    Ok(beads)
+}
+
+/// Queries dependencies and merges parent/blocking/related into beads.
+async fn merge_dependencies(
+    conn: &mut mysql_async::Conn,
+    db_name: &str,
+    beads: &mut [Bead],
+) -> Result<(), DoltError> {
+    let query = format!(
+        "SELECT issue_id, depends_on_id, `type` FROM `{}`.dependencies",
+        db_name
+    );
+    let rows: Vec<Row> = conn.query(&query).await
+        .map_err(|e| DoltError::QueryFailed(format!("dependencies: {}", e)))?;
+
+    let mut parent_map: HashMap<String, String> = HashMap::new();
+    let mut blocking_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut related_map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for row in &rows {
+        let issue_id = get_str(row, "issue_id");
+        let depends_on = get_str(row, "depends_on_id");
+        match get_str(row, "type").as_str() {
+            "parent-child" | "parent" => { parent_map.insert(issue_id, depends_on); }
+            "relates-to" | "related" => { related_map.entry(issue_id).or_default().push(depends_on); }
+            _ => { blocking_map.entry(issue_id).or_default().push(depends_on); }
+        }
+    }
+
+    for bead in beads.iter_mut() {
+        if let Some(pid) = parent_map.remove(&bead.id) { bead.parent_id = Some(pid); }
+        if let Some(b) = blocking_map.remove(&bead.id) { bead.deps = Some(b); }
+        if let Some(r) = related_map.remove(&bead.id) { bead.relates_to = Some(r); }
+    }
+    Ok(())
 }
 
 /// A discovered Dolt database.

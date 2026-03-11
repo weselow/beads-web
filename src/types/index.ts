@@ -20,6 +20,7 @@ export interface Project {
   lastOpened: string;
   createdAt: string;
   beadCounts?: BeadCounts;
+  dataSource?: string;
 }
 
 /**
