@@ -285,8 +285,11 @@ pub async fn read_beads(
     Extension(dolt_manager): Extension<Arc<DoltManager>>,
     Query(params): Query<BeadsParams>,
 ) -> impl IntoResponse {
+    // Normalize Windows backslashes to forward slashes
+    let path = params.path.replace('\\', "/");
+
     // Direct Dolt read for dolt:// paths (no filesystem needed)
-    if let Some(db_name) = params.path.strip_prefix(DOLT_PATH_PREFIX) {
+    if let Some(db_name) = path.strip_prefix(DOLT_PATH_PREFIX) {
         if !dolt_manager.is_available() && !dolt_manager.check_server().await {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -305,7 +308,7 @@ pub async fn read_beads(
         };
     }
 
-    let project_path = PathBuf::from(&params.path);
+    let project_path = PathBuf::from(&path);
 
     // Security: Validate path is within allowed directories
     if let Err(e) = validate_path_security(&project_path) {
@@ -368,11 +371,11 @@ pub async fn read_beads(
         // Tier 2: Try bd CLI
         match read_beads_from_cli(&project_path).await {
             Ok(b) => {
-                tracing::info!("Read {} beads from bd CLI for {}", b.len(), params.path);
+                tracing::info!("Read {} beads from bd CLI for {}", b.len(), path);
                 break 'fallback (b, "cli");
             }
             Err(cli_err) => {
-                tracing::warn!("bd CLI failed for {}: {}", params.path, cli_err);
+                tracing::warn!("bd CLI failed for {}: {}", path, cli_err);
             }
         }
 

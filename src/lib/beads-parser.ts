@@ -128,7 +128,11 @@ export async function loadProjectBeads(projectPath: string, options?: { withSour
     }
     return mapped;
   } catch (error) {
-    console.error(`Failed to load beads from ${projectPath}:`, error);
+    // 404 is normal for projects without beads data — don't pollute console
+    const is404 = error instanceof Error && error.message.includes('404');
+    if (!is404) {
+      console.warn(`Failed to load beads from ${projectPath}:`, error);
+    }
     if (options?.withSource) {
       return { beads: [], source: undefined };
     }

@@ -55,9 +55,15 @@ fn db_error_response(err: DbError) -> (StatusCode, Json<ErrorResponse>) {
 pub async fn list_projects(
     State(db): State<AppState>,
 ) -> Result<Json<Vec<ProjectWithTags>>, (StatusCode, Json<ErrorResponse>)> {
-    db.get_projects_with_tags()
-        .map(Json)
-        .map_err(db_error_response)
+    let mut projects = db.get_projects_with_tags().map_err(db_error_response)?;
+    // Normalize Windows backslashes in paths for consistent frontend behavior
+    for p in &mut projects {
+        p.path = p.path.replace('\\', "/");
+        if let Some(ref lp) = p.local_path {
+            p.local_path = Some(lp.replace('\\', "/"));
+        }
+    }
+    Ok(Json(projects))
 }
 
 /// POST /api/projects - Create a new project
