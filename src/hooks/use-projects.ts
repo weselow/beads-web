@@ -82,31 +82,47 @@ export function useProjects(): UseProjectsResult {
         }
       };
 
-      // Fire all requests in parallel, update state as each resolves
-      const promises = data.map(async (project) => {
-        const result = await loadBeads(project);
-        if (!result || loadId !== loadingRef.current) return;
+      // Limit concurrent beads requests to avoid overloading Dolt servers
+      const MAX_CONCURRENT = 3;
+      let running = 0;
+      let queue = [...data];
 
-        loaded++;
-        setLoadingStatus(
-          loaded < total
-            ? `Loading beads: ${project.name} (${loaded}/${total})`
-            : null
-        );
-
-        setProjects((prev) =>
-          prev.map((p) =>
-            p.id === result.id
-              ? { ...p, beadCounts: result.beadCounts, dataSource: result.dataSource, beadError: result.beadError }
-              : p
-          )
-        );
+      await new Promise<void>((resolve) => {
+        const next = () => {
+          while (running < MAX_CONCURRENT && queue.length > 0) {
+            const project = queue.shift()!;
+            running++;
+            loadBeads(project).then((result) => {
+              running--;
+              if (result && loadId === loadingRef.current) {
+                loaded++;
+                setLoadingStatus(
+                  loaded < total
+                    ? `Loading beads: ${project.name} (${loaded}/${total})`
+                    : null
+                );
+                setProjects((prev) =>
+                  prev.map((p) =>
+                    p.id === result.id
+                      ? { ...p, beadCounts: result.beadCounts, dataSource: result.dataSource, beadError: result.beadError }
+                      : p
+                  )
+                );
+              }
+              if (queue.length === 0 && running === 0) {
+                resolve();
+              } else {
+                next();
+              }
+            });
+          }
+          // Handle edge case: empty queue from the start
+          if (queue.length === 0 && running === 0) {
+            resolve();
+          }
+        };
+        next();
       });
-
-      await Promise.all(promises);
-      if (loadId === loadingRef.current) {
-        setLoadingStatus(null);
-      }
     } catch (err) {
       if (loadId !== loadingRef.current) return;
       setError(err instanceof Error ? err : new Error("Failed to fetch projects"));
