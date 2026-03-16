@@ -1,6 +1,6 @@
 {
   "name": "beads-web",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "scripts": {
     "dev": "next dev -p 3007",
     "build": "next build",
