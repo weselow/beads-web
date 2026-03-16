@@ -8,6 +8,8 @@ use std::sync::Arc;
 use crate::db::Database;
 use crate::dolt::{self, DoltManager};
 
+use super::beads::resolve_dolt_port;
+
 /// GET /api/dolt/status
 ///
 /// Returns Dolt server availability and database count.
@@ -87,14 +89,9 @@ pub async fn dolt_servers(
         if project.path.is_empty() || project.path.starts_with("dolt://") {
             continue;
         }
-        let port_file = format!(
-            "{}/.beads/dolt-server.port",
-            project.path.replace('\\', "/")
-        );
-        if let Ok(content) = tokio::fs::read_to_string(&port_file).await {
-            if let Ok(port) = content.trim().parse::<u16>() {
-                port_to_path.insert(port, project.path.clone());
-            }
+        let beads_dir = std::path::Path::new(&project.path).join(".beads");
+        if let Some(port) = resolve_dolt_port(&beads_dir) {
+            port_to_path.insert(port, project.path.clone());
         }
     }
 

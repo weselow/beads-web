@@ -23,6 +23,35 @@ use tokio::process::Command;
 use super::validate_path_security;
 use crate::dolt::{self, DoltManager};
 
+/// Resolves the Dolt server port for a project.
+/// Tries dolt-server.port file first, falls back to parsing dolt-server.log.
+pub fn resolve_dolt_port(beads_dir: &std::path::Path) -> Option<u16> {
+    // Try port file first
+    let port_file = beads_dir.join("dolt-server.port");
+    if let Ok(content) = std::fs::read_to_string(&port_file) {
+        if let Ok(port) = content.trim().parse::<u16>() {
+            return Some(port);
+        }
+    }
+
+    // Fallback: parse port from dolt-server.log
+    let log_file = beads_dir.join("dolt-server.log");
+    if let Ok(content) = std::fs::read_to_string(&log_file) {
+        // Look for HP="127.0.0.1:PORT" pattern
+        if let Some(start) = content.find("HP=\"127.0.0.1:") {
+            let after = &content[start + 14..]; // skip HP="127.0.0.1:
+            if let Some(end) = after.find('"') {
+                if let Ok(port) = after[..end].parse::<u16>() {
+                    tracing::info!("Resolved port {} from dolt-server.log (no port file)", port);
+                    return Some(port);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Resolves the correct path to `issues.jsonl` for a project.
 ///
 /// When a project has `sync-branch` set in `.beads/config.yaml`, the canonical
@@ -327,32 +356,27 @@ pub async fn read_beads(
         );
     }
 
-    // Tier 0: Try per-project Dolt server via port file
-    let port_file = beads_dir.join("dolt-server.port");
-    if port_file.exists() {
-        if let Ok(port_str) = std::fs::read_to_string(&port_file) {
-            if let Ok(port) = port_str.trim().parse::<u16>() {
-                // Try known db name first, then discover via SHOW DATABASES
-                let db_name = match dolt::database_name_for_project(&project_path) {
-                    Some(name) => Some(name),
-                    None => {
-                        tracing::info!("No db name from metadata for port {}, discovering...", port);
-                        dolt::discover_database_on_port(port).await.ok()
-                    }
-                };
+    // Tier 0: Try per-project Dolt server via port file or log
+    if let Some(port) = resolve_dolt_port(&beads_dir) {
+        // Try known db name first, then discover via SHOW DATABASES
+        let db_name = match dolt::database_name_for_project(&project_path) {
+            Some(name) => Some(name),
+            None => {
+                tracing::info!("No db name from metadata for port {}, discovering...", port);
+                dolt::discover_database_on_port(port).await.ok()
+            }
+        };
 
-                if let Some(db_name) = db_name {
-                    tracing::info!("Trying per-project Dolt server on port {} for db {}", port, db_name);
-                    match dolt::read_beads_on_port(port, &db_name).await {
-                        Ok(beads) => {
-                            tracing::info!("Read {} beads from per-project Dolt (port {})", beads.len(), port);
-                            let beads = post_process_beads(beads);
-                            return (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-project" })));
-                        }
-                        Err(e) => {
-                            tracing::warn!("Per-project Dolt server on port {} failed: {}, falling back", port, e);
-                        }
-                    }
+        if let Some(db_name) = db_name {
+            tracing::info!("Trying per-project Dolt server on port {} for db {}", port, db_name);
+            match dolt::read_beads_on_port(port, &db_name).await {
+                Ok(beads) => {
+                    tracing::info!("Read {} beads from per-project Dolt (port {})", beads.len(), port);
+                    let beads = post_process_beads(beads);
+                    return (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-project" })));
+                }
+                Err(e) => {
+                    tracing::warn!("Per-project Dolt server on port {} failed: {}, falling back", port, e);
                 }
             }
         }
