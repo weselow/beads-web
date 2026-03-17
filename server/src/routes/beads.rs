@@ -101,6 +101,9 @@ pub fn resolve_issues_path(project_path: &Path) -> PathBuf {
 pub struct BeadsParams {
     /// The project path containing .beads/issues.jsonl
     pub path: String,
+    /// Optional ISO 8601 timestamp — only return beads updated after this time.
+    /// Used for incremental polling (subsequent fetches after initial full load).
+    pub updated_after: Option<String>,
 }
 
 /// A dependency relationship in the JSONL file (old format).
@@ -291,9 +294,15 @@ fn extract_json_array(output: &str) -> Result<&str, String> {
 ///
 /// Calls `bd list --json` for issues and `bd sql` for comments,
 /// then merges them together.
-async fn read_beads_from_cli(project_path: &Path) -> Result<Vec<Bead>, String> {
-    // Get all beads
-    let list_output = run_bd(&["list", "--json"], project_path).await?;
+async fn read_beads_from_cli(project_path: &Path, updated_after: Option<&str>) -> Result<Vec<Bead>, String> {
+    // Get all beads (optionally filtered by updated_after)
+    let mut args = vec!["list", "--json"];
+    let updated_flag;
+    if let Some(since) = updated_after {
+        updated_flag = format!("--updated-after={}", since);
+        args.push(&updated_flag);
+    }
+    let list_output = run_bd(&args, project_path).await?;
     let json_str = extract_json_array(&list_output)?;
     let mut beads: Vec<Bead> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse bd list output: {}", e))?;
@@ -453,7 +462,7 @@ pub async fn read_beads(
         }
 
         // Tier 2: Try bd CLI
-        match read_beads_from_cli(&project_path).await {
+        match read_beads_from_cli(&project_path, params.updated_after.as_deref()).await {
             Ok(b) => {
                 tracing::info!("Read {} beads from bd CLI for {}", b.len(), path);
                 break 'fallback (b, "cli");

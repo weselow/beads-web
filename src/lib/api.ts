@@ -151,9 +151,11 @@ export interface CreateBeadInput {
 }
 
 export const beads = {
-  read: async (path: string) => {
+  read: async (path: string, updatedAfter?: string) => {
+    const params = new URLSearchParams({ path });
+    if (updatedAfter) params.set('updated_after', updatedAfter);
     const data = await fetchApi<{ beads: Bead[]; source?: string }>(
-      `/api/beads?path=${encodeURIComponent(path)}`
+      `/api/beads?${params}`
     );
     BeadsResponseSchema.parse(data);
     return data;
