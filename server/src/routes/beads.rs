@@ -1674,4 +1674,42 @@ mod tests {
         let output = "Error: something went wrong";
         assert!(extract_json_array(output).is_err());
     }
+
+    #[test]
+    fn test_parse_comment_with_uuid_id() {
+        let json = r#"{"id":"9960209c-37d3-40a8-b608-2d54e40b25e8","issue_id":"beads-web-ccz","author":"weselow","text":"A comment","created_at":"2026-03-16T12:10:05Z"}"#;
+        let comment: Comment = serde_json::from_str(json).unwrap();
+        assert_eq!(comment.id, "9960209c-37d3-40a8-b608-2d54e40b25e8");
+        assert_eq!(comment.issue_id, "beads-web-ccz");
+    }
+
+    #[test]
+    fn test_parse_comment_with_numeric_id() {
+        let json = r#"{"id":42,"issue_id":"test-1","author":"user","text":"Old format","created_at":"2026-01-01T00:00:00Z"}"#;
+        let comment: Comment = serde_json::from_str(json).unwrap();
+        assert_eq!(comment.id, "42");
+    }
+
+    #[test]
+    fn test_extract_json_array_with_bd_v061_output() {
+        let output = "Warning: Dolt server endpoint changed: port 14302 → 50726 (auto-start)\n\
+            \x20 Previous port was unreachable.\n\
+            2026/03/17 22:44:01 migration 010: converting events.id from bigint to CHAR(36) UUID\n\
+            2026/03/17 22:44:01 migration 010: events.id migrated to CHAR(36) UUID successfully\n\
+            Flushed working set for 1 database(s) before server stop\n\
+            [{\"id\":\"test-1\",\"title\":\"Test\",\"status\":\"open\"}]";
+        let result = extract_json_array(output).unwrap();
+        assert!(result.starts_with('['));
+        let beads: Vec<Bead> = serde_json::from_str(result).unwrap();
+        assert_eq!(beads.len(), 1);
+        assert_eq!(beads[0].id, "test-1");
+    }
+
+    #[test]
+    fn test_extract_json_array_with_empty_array() {
+        let output = "Flushed working set\n[]";
+        let result = extract_json_array(output).unwrap();
+        let beads: Vec<Bead> = serde_json::from_str(result).unwrap();
+        assert_eq!(beads.len(), 0);
+    }
 }
