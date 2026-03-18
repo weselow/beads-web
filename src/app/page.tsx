@@ -95,7 +95,7 @@ export default function ProjectsPage() {
         <p className="text-center text-t-tertiary text-sm mb-8">
           Highly recommended to use with the{" "}
           <a
-            href="https://github.com/weselow/beads-web"
+            href="https://github.com/weselow/claude-protocol"
             target="_blank"
             rel="noopener noreferrer"
             className="text-info hover:text-info underline"
