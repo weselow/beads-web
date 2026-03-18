@@ -16,13 +16,13 @@ export const CommentSchema = z.object({
 export const BeadSchema = z.object({
   id: z.string(),
   title: z.string(),
-  description: z.optional(z.string()),
+  description: z.string().nullish(),
   status: z.string(),
-  priority: z.number(),
-  issue_type: z.string(),
-  owner: z.string(),
-  created_at: z.string(),
-  updated_at: z.string(),
+  priority: z.number().nullish(),
+  issue_type: z.string().nullish(),
+  owner: z.string().nullish(),
+  created_at: z.string().nullish(),
+  updated_at: z.string().nullish(),
   comments: z.array(CommentSchema).nullish(),
   parent_id: z.string().nullish(),
   children: z.array(z.string()).nullish(),
@@ -31,6 +31,9 @@ export const BeadSchema = z.object({
   blockers: z.array(z.string()).nullish(),
   relates_to: z.array(z.string()).nullish(),
   _originalStatus: z.string().nullish(),
+  close_reason: z.string().nullish(),
+  closed_at: z.string().nullish(),
+  created_by: z.string().nullish(),
 });
 
 export const BeadsResponseSchema = z.object({
