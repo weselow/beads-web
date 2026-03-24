@@ -216,7 +216,7 @@ export default function ProjectsPage() {
             <div role="alert" className="rounded-lg border border-danger/50 bg-danger/70 p-6 text-center">
               <p className="text-danger">Error loading projects: {error.message}</p>
               <p className="mt-2 text-sm text-danger">
-                Make sure the Tauri backend is running.
+                Make sure the backend server is running.
               </p>
             </div>
           ) : filteredProjects.length === 0 ? (

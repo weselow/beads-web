@@ -53,7 +53,7 @@ export function UpdateBanner() {
         const checkServer = async () => {
           for (let i = 0; i < 20; i++) {
             try {
-              await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3008'}/api/health`, {
+              await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || ''}/api/health`, {
                 signal: AbortSignal.timeout(2000),
               });
               window.location.reload();

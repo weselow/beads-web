@@ -111,9 +111,9 @@ async fn main() {
     // Initialize Dolt connection manager
     let dolt_manager = Arc::new(dolt::DoltManager::new());
     if dolt_manager.check_server().await {
-        info!("Dolt server is available on port 3307");
+        info!("Dolt server is available at {}:{}", dolt::dolt_host(), dolt::dolt_port());
     } else {
-        info!("Dolt server not detected — will use bd CLI / JSONL fallback");
+        info!("Dolt server not detected at {}:{} — will use bd CLI / JSONL fallback", dolt::dolt_host(), dolt::dolt_port());
     }
 
     // Check for bd CLI availability and compatibility
@@ -204,8 +204,10 @@ async fn main() {
 
     info!("Server starting on http://localhost:{}", port);
 
-    // Open default browser
-    if let Err(e) = open::that(format!("http://localhost:{}", port)) {
+    // Open default browser unless suppressed (e.g., Docker/headless)
+    if env::var("NO_BROWSER").is_ok() {
+        info!("Browser auto-open suppressed (NO_BROWSER is set)");
+    } else if let Err(e) = open::that(format!("http://localhost:{}", port)) {
         tracing::warn!("Failed to open browser: {}", e);
     }
 

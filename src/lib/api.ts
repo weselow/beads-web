@@ -1,12 +1,12 @@
 /**
  * Frontend API layer for beads-kanban-ui webapp
- * Replaces Tauri invoke() calls with HTTP fetch to backend
+ * HTTP fetch to backend — uses relative URLs (same origin) by default
  */
 
 import { BeadsResponseSchema, PRStatusSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
 import type { Project, Tag, Bead, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryResponse, MemoryStats, MemoryEntry, Agent, AgentModel } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3008';
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 /**
  * Input for creating a new project

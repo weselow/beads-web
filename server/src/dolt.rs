@@ -17,12 +17,12 @@ use crate::routes::beads::{Bead, Comment};
 
 /// Dolt server connection parameters from environment variables (with defaults).
 /// Values are read once at first access and cached for the process lifetime.
-fn dolt_host() -> &'static str {
+pub fn dolt_host() -> &'static str {
     static V: OnceLock<String> = OnceLock::new();
     V.get_or_init(|| std::env::var("DOLT_HOST").unwrap_or_else(|_| "127.0.0.1".into()))
 }
 
-fn dolt_port() -> u16 {
+pub fn dolt_port() -> u16 {
     static V: OnceLock<u16> = OnceLock::new();
     *V.get_or_init(|| match std::env::var("DOLT_PORT") {
         Ok(p) => p.parse().expect("DOLT_PORT must be a valid port number"),
@@ -715,5 +715,17 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         let obj = parsed.as_object().unwrap();
         assert_eq!(obj.len(), 2);
+    }
+
+    // ── dolt_host / dolt_port default value tests ────────────────────────
+
+    #[test]
+    fn test_dolt_host_default() {
+        assert_eq!(dolt_host(), "127.0.0.1");
+    }
+
+    #[test]
+    fn test_dolt_port_default() {
+        assert_eq!(dolt_port(), 3307);
     }
 }
