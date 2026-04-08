@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "nc-stub args: $*" >&2  # lets tests assert which port was queried
+exit 1  # port closed
