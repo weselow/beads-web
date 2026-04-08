@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# Requires bats-core >= 1.5 for dolt_up() helper pattern
 
 SCRIPT="$BATS_TEST_DIRNAME/../start.sh"
 STUBS="$BATS_TEST_DIRNAME/stubs"
@@ -29,10 +30,10 @@ dolt_up() { PATH="$STUBS/dolt-up:$PATH" "$@"; }
   [[ "$output" == *"3399"* ]]
 }
 
-@test "nc is called with the configured port" {
+@test "nc stub is invoked with the configured port" {
   DOLT_PORT=3399 run bash "$SCRIPT"
-  # dolt-down/nc echoes its args to stderr (captured in $output by bats)
-  [[ "$output" == *"3399"* ]]
+  # dolt-down/nc echoes sentinel + args to stderr, captured in $output by bats
+  [[ "$output" == *"nc-stub args:"*"3399"* ]]
 }
 
 # --- Binary missing ---

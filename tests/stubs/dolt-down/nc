@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-echo "nc-stub args: $*" >&2  # lets tests assert which port was queried
+echo "nc-stub args: $*"  # stdout so it survives the 2>/dev/null in start.sh
 exit 1  # port closed
