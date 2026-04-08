@@ -17,7 +17,7 @@ if ! nc -z -w 1 localhost "$DOLT_PORT" 2>/dev/null; then
   exit 1
 fi
 
-BEADS_WEB_BIN="${BEADS_WEB_BIN:-$SCRIPT_DIR/server/target/release/beads-web}"
+BEADS_WEB_BIN="${BEADS_WEB_BIN:-$SCRIPT_DIR/server/target/release/beads-server}"
 
 # verify binary exists before exec to give an actionable error
 if [[ ! -x "$BEADS_WEB_BIN" ]]; then
