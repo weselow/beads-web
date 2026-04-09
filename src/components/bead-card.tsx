@@ -1,5 +1,8 @@
 "use client";
 
+import { useDraggable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+
 import { FolderOpen, GitPullRequest, Link2, MessageSquare, Check, X, Clock } from "lucide-react";
 
 import { CopyableText } from "@/components/copyable-text";
@@ -150,6 +153,13 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
   const commentCount = (bead.comments ?? []).length;
   const relatedCount = (bead.relates_to ?? []).length;
 
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: bead.id,
+    data: { bead },
+  });
+
+  const dragStyle = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+
   const hasWorktree = worktreeStatus?.exists ?? false;
   const hasPR = prStatus?.pr !== null && prStatus?.pr !== undefined;
 
@@ -214,6 +224,10 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
   if (layout === 'compact-row') {
     return (
       <div
+        ref={setNodeRef}
+        style={dragStyle}
+        {...attributes}
+        {...listeners}
         {...interactionProps}
         className={cn(
           "theme-card cursor-pointer p-2 flex items-start gap-2.5",
@@ -221,7 +235,8 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
           "hover:bg-surface-overlay/50",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isClosed && "opacity-40",
-          isSelected && "bg-info/5 outline outline-1 outline-info/20"
+          isSelected && "bg-info/5 outline outline-1 outline-info/20",
+          isDragging && "opacity-30"
         )}
       >
         {/* Priority bar */}
@@ -274,6 +289,10 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
   if (layout === 'property-tags') {
     return (
       <div
+        ref={setNodeRef}
+        style={dragStyle}
+        {...attributes}
+        {...listeners}
         {...interactionProps}
         className={cn(
           "theme-card cursor-pointer p-3 bg-card border border-b-default/60",
@@ -281,7 +300,8 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           blocked && "border-l-3 border-l-danger",
           isClosed && "opacity-45",
-          isSelected && "ring-2 ring-ring ring-offset-2 ring-offset-surface-base"
+          isSelected && "ring-2 ring-ring ring-offset-2 ring-offset-surface-base",
+          isDragging && "opacity-30"
         )}
       >
         {/* Title first */}
@@ -336,12 +356,17 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
   // ─── Layout: standard (Default / Glassmorphism / Neo-Brutalist / Soft Light) ───
   return (
     <div
+      ref={setNodeRef}
+      style={dragStyle}
+      {...attributes}
+      {...listeners}
       {...interactionProps}
       className={cn(
         "theme-card cursor-pointer bg-card border border-border/40 flex",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         blocked ? "border-l-4 border-l-danger" : "",
-        isSelected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+        isSelected && "ring-2 ring-ring ring-offset-2 ring-offset-background",
+        isDragging && "opacity-30"
       )}
     >
       {/* Priority bar (visible when --priority-bar-w > 0, i.e. brutalist) */}
@@ -366,7 +391,7 @@ export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelec
                 </CopyableText>
               )}
               {ticketNumber !== undefined && " "}
-              <CopyableText copyText={bead.id}>
+              <CopyableText copyText={bead.id} variant="pill">
                 {formatBeadId(bead.id)}
               </CopyableText>
             </div>

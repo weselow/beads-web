@@ -34,8 +34,13 @@ import { useKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 import { useProject } from "@/hooks/use-project";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
+import { DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+
+import { DragOverlayCard } from "@/components/drag-overlay-card";
 import { isBlocked } from "@/lib/bead-utils";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
+import { updateStatus as cliUpdateStatus } from "@/lib/cli";
+import { toast } from "@/hooks/use-toast";
 import { isDoltProject } from "@/lib/utils";
 import type { Bead, BeadStatus } from "@/types";
 
@@ -109,6 +114,12 @@ export default function KanbanBoard() {
   // Theme
   const { theme } = useTheme();
 
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  );
+
   // Memory panel state
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
 
@@ -120,6 +131,10 @@ export default function KanbanBoard() {
 
   // Project settings dialog state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Drag-and-drop state
+  const [activeDragBead, setActiveDragBead] = useState<Bead | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Map<string, BeadStatus>>(new Map());
 
   // Show GitHub warning if project loaded, status checked, and either no remote or not authenticated
   const showGitHubWarning = !projectLoading &&
@@ -148,6 +163,39 @@ export default function KanbanBoard() {
     setFilters({ owners: newOwners });
   }, [filters.owners, setFilters]);
 
+  const handleDragStart = useCallback((event: { active: { id: string | number; data: { current?: { bead?: Bead } } } }) => {
+    const bead = event.active.data.current?.bead;
+    if (bead) setActiveDragBead(bead);
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragBead(null);
+
+    if (!over || !project?.path) return;
+
+    const beadId = active.id as string;
+    const newStatus = over.id as BeadStatus;
+    const bead = beads.find(b => b.id === beadId);
+    if (!bead || bead.status === newStatus) return;
+
+    // Optimistic update
+    setStatusOverrides(prev => new Map(prev).set(beadId, newStatus));
+
+    try {
+      await cliUpdateStatus(beadId, newStatus, project.path);
+      refreshBeads();
+    } catch (err) {
+      // Revert on failure
+      setStatusOverrides(prev => {
+        const next = new Map(prev);
+        next.delete(beadId);
+        return next;
+      });
+      toast({ variant: "destructive", title: "Failed to move bead", description: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }, [beads, project?.path, refreshBeads]);
+
   // Filter out closed beads to avoid unnecessary polling for finalized tasks
   const beadIds = useMemo(() => beads.filter(b => b.status !== 'closed').map(b => b.id), [beads]);
 
@@ -175,21 +223,20 @@ export default function KanbanBoard() {
 
   /**
    * Group top-level beads by status for columns.
+   * Applies statusOverrides for optimistic drag updates.
    * Defensive: falls back to 'open' for any status not in the 4 columns.
    */
   const filteredBeadsByStatus = useMemo(() => {
     const grouped: Record<BeadStatus, Bead[]> = {
-      open: [],
-      in_progress: [],
-      inreview: [],
-      closed: [],
+      open: [], in_progress: [], inreview: [], closed: [],
     };
     for (const bead of topLevelBeads) {
-      const column = grouped[bead.status] ? bead.status : 'open';
-      grouped[column].push(bead);
+      const effectiveStatus = statusOverrides.get(bead.id) ?? bead.status;
+      const column = grouped[effectiveStatus] ? effectiveStatus : 'open';
+      grouped[column].push({ ...bead, status: effectiveStatus });
     }
     return grouped;
-  }, [topLevelBeads]);
+  }, [topLevelBeads, statusOverrides]);
 
   /**
    * Detect beads with truly unknown statuses for the warning indicator.
@@ -233,6 +280,11 @@ export default function KanbanBoard() {
       router.replace("/");
     }
   }, [projectId, router]);
+
+  // Clear drag overrides whenever beads data refreshes
+  useEffect(() => {
+    setStatusOverrides(new Map());
+  }, [beads]);
 
   /**
    * Handle navigation from Memory panel to a bead
@@ -369,24 +421,33 @@ export default function KanbanBoard() {
             <div role="alert" className="text-danger">Error loading beads: {beadsError.message}</div>
           </div>
         ) : (
-          <div className="grid grid-cols-4 h-full" style={{ gap: 'var(--column-gap)' }}>
-            {COLUMNS.map(({ status, title }) => (
-              <KanbanColumn
-                key={status}
-                status={status}
-                title={title}
-                beads={filteredBeadsByStatus[status] || []}
-                allBeads={beads}
-                selectedBeadId={selectedId}
-                ticketNumbers={ticketNumbers}
-                onSelectBead={openBead}
-                onChildClick={openBead}
-                onNavigateToDependency={navigateToBead}
-                projectPath={project?.path}
-                onUpdate={refreshBeads}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="grid grid-cols-4 h-full" style={{ gap: 'var(--column-gap)' }}>
+              {COLUMNS.map(({ status, title }) => (
+                <KanbanColumn
+                  key={status}
+                  status={status}
+                  title={title}
+                  beads={filteredBeadsByStatus[status] || []}
+                  allBeads={beads}
+                  selectedBeadId={selectedId}
+                  ticketNumbers={ticketNumbers}
+                  onSelectBead={openBead}
+                  onChildClick={openBead}
+                  onNavigateToDependency={navigateToBead}
+                  projectPath={project?.path}
+                  onUpdate={refreshBeads}
+                />
+              ))}
+            </div>
+            <DragOverlay>
+              {activeDragBead ? <DragOverlayCard bead={activeDragBead} /> : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </main>
 

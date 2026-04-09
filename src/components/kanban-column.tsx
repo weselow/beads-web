@@ -1,5 +1,7 @@
 "use client";
 
+import { useDroppable } from "@dnd-kit/core";
+
 import { PackageOpen } from "lucide-react";
 
 import { BeadCard } from "@/components/bead-card";
@@ -116,11 +118,15 @@ export function KanbanColumn({
   projectPath,
   onUpdate,
 }: KanbanColumnProps) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: status });
+
   return (
     <div
+      ref={setDropRef}
       className={cn(
         "flex flex-col h-full min-h-0 theme-column",
-        "bg-surface-raised/30 border border-b-default/50"
+        "bg-surface-raised/30 border border-b-default/50",
+        isOver && "ring-2 ring-inset ring-primary/30"
       )}
       style={{ '--column-accent': getColumnAccentColor(status) } as React.CSSProperties}
     >
