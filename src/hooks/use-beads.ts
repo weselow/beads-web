@@ -201,7 +201,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
 
     const intervalId = setInterval(() => {
       loadBeads();
-    }, 15_000);
+    }, 3_000);
 
     return () => clearInterval(intervalId);
   }, [projectPath, loadBeads]);

@@ -104,6 +104,7 @@ impl DoltManager {
     }
 
     /// Creates a new bead in a Dolt database and commits the change.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_bead(
         &self,
         db_name: &str,
@@ -121,13 +122,7 @@ impl DoltManager {
 
         // First, query the table schema to find all NOT NULL columns without defaults
         // so we can provide empty values for them
-        let schema_query = format!(
-            "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
-             WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'issues' \
-             AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL \
-             AND COLUMN_NAME NOT IN ('id', 'title', 'description', 'status', 'priority', \
-             'issue_type', 'owner', 'created_at', 'updated_at')"
-        );
+        let schema_query = "SELECT COLUMN_NAME FROM information_schema.COLUMNS              WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'issues'              AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL              AND COLUMN_NAME NOT IN ('id', 'title', 'description', 'status', 'priority',              'issue_type', 'owner', 'created_at', 'updated_at')".to_string();
         let extra_cols: Vec<String> = conn.exec_map(
             &schema_query,
             mysql_async::params! { "db" => db_name },

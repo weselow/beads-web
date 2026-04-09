@@ -11,7 +11,7 @@ use tokio::process::Command;
 use super::validate_path_security;
 
 /// Whitelisted bd subcommands that are allowed to be executed.
-const ALLOWED_COMMANDS: &[&str] = &["list", "show", "comment", "comments", "update", "close", "create", "ready", "epic"];
+const ALLOWED_COMMANDS: &[&str] = &["list", "show", "comments", "update", "close", "create", "ready", "epic", "config"];
 
 /// Request body for the bd command endpoint.
 #[derive(Deserialize)]
@@ -151,7 +151,8 @@ mod tests {
     fn test_allowed_commands_contains_expected() {
         assert!(ALLOWED_COMMANDS.contains(&"list"));
         assert!(ALLOWED_COMMANDS.contains(&"show"));
-        assert!(ALLOWED_COMMANDS.contains(&"comment"));
+        assert!(ALLOWED_COMMANDS.contains(&"comments"));
+        assert!(ALLOWED_COMMANDS.contains(&"config"));
         assert!(ALLOWED_COMMANDS.contains(&"update"));
         assert!(ALLOWED_COMMANDS.contains(&"close"));
         assert!(ALLOWED_COMMANDS.contains(&"create"));
