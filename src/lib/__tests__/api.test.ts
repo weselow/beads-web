@@ -106,6 +106,7 @@ describe('api.version', () => {
       update_available: true,
       download_url: 'https://example.com',
       release_notes: 'New features',
+      asset_url: null,
     };
 
     mockFetch.mockResolvedValue(mockResponse(versionData));

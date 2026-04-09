@@ -51,7 +51,8 @@ export type KnownRawStatus =
   | 'hooked'
   | 'done'
   | 'resolved'
-  | 'pending';
+  | 'pending'
+  | 'archived';
 
 /**
  * Badge info for beads whose original status differs from their mapped column.
@@ -81,6 +82,7 @@ export const STATUS_MAP: Record<KnownRawStatus, { column: BeadStatus; badge?: St
   blocked:     { column: 'open',        badge: { label: 'Blocked',  variant: 'warning' } },
   deferred:    { column: 'open',        badge: { label: 'Deferred', variant: 'muted'   } },
   hooked:      { column: 'in_progress', badge: { label: 'Waiting',  variant: 'info'    } },
+  archived:    { column: 'closed',      badge: { label: 'Archived', variant: 'muted'   } },
   // Hidden
   tombstone:   null,
 };
