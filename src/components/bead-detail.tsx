@@ -183,11 +183,13 @@ export function BeadDetail({
     setIsDesignDocFullScreen(isFullScreen);
   }, []);
 
-  // Override Radix's scroll lock when MorphingDialog is fullscreen
+  // Clear any lingering inline body styles when design doc dialog closes.
+  // RemoveScroll (used by MorphingDialog) manages scroll locking via a <style>
+  // tag — but any inline body styles we set bypass its cleanup, so we clear them here.
   useEffect(() => {
-    if (isDesignDocFullScreen) {
+    if (!isDesignDocFullScreen) {
+      document.body.style.overflow = '';
       document.body.style.pointerEvents = '';
-      document.body.style.overflow = 'hidden';
     }
   }, [isDesignDocFullScreen]);
 

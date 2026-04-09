@@ -57,7 +57,7 @@ dolt_up() { PATH="$STUBS/dolt-up:$PATH" "$@"; }
 
 @test "prints dashboard URL when Dolt is reachable" {
   dolt_up run bash "$SCRIPT"
-  [[ "$output" == *"http://localhost:3007"* ]]
+  [[ "$output" == *"http://localhost:3008"* ]]
 }
 
 @test "dashboard URL reflects BEADS_WEB_PORT env var" {

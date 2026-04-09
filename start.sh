@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DOLT_PORT="${DOLT_PORT:-3307}"
-BEADS_WEB_PORT="${BEADS_WEB_PORT:-3007}"
+BEADS_WEB_PORT="${BEADS_WEB_PORT:-3008}"  # server reads PORT env var, defaults to 3008
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)  # always absolute, works regardless of cwd
 
 # guard: nc must be available (not present in all minimal containers)
@@ -17,7 +17,7 @@ if ! nc -z -w 1 localhost "$DOLT_PORT" 2>/dev/null; then
   exit 1
 fi
 
-BEADS_WEB_BIN="${BEADS_WEB_BIN:-$SCRIPT_DIR/server/target/release/beads-web}"
+BEADS_WEB_BIN="${BEADS_WEB_BIN:-$SCRIPT_DIR/server/target/release/beads-server}"
 
 # verify binary exists before exec to give an actionable error
 if [[ ! -x "$BEADS_WEB_BIN" ]]; then
@@ -29,5 +29,5 @@ fi
 echo "Dolt OK on port $DOLT_PORT. Starting beads-web..."
 echo "Dashboard: http://localhost:$BEADS_WEB_PORT"
 
-export BEADS_WEB_PORT  # pass port to server process
+export PORT="$BEADS_WEB_PORT"  # server reads PORT env var
 exec "$BEADS_WEB_BIN"

@@ -6,16 +6,25 @@
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3008';
 
 /**
- * Fetch design doc content from the backend API
+ * Fetch design doc content from the backend API.
+ *
+ * Some bd projects store design content inline (not as a file path). If the
+ * value doesn't look like a .designs/ path or contains newlines, it is already
+ * the content — return it directly without fetching.
  */
 export async function fetchDesignDoc(path: string, projectPath: string): Promise<string> {
+  // Inline content: bd stores the design text directly instead of a file path
+  if (!path.startsWith('.designs/') || path.includes('\n')) {
+    return path;
+  }
   const encodedPath = encodeURIComponent(path);
   const encodedProjectPath = encodeURIComponent(projectPath);
   const response = await fetch(
     `${API_BASE}/api/fs/read?path=${encodedPath}&project_path=${encodedProjectPath}`
   );
   if (!response.ok) {
-    throw new Error('Failed to fetch design doc: ' + response.statusText);
+    const body = await response.json().catch(() => ({}));
+    throw new Error('Failed to fetch design doc: ' + (body.error ?? response.statusText));
   }
   const data = await response.json();
   return data.content || '';
