@@ -10,15 +10,25 @@ import {
   Link2,
   Plus,
   Square,
+  Trash2,
   X,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 import { BeadPRSection } from "@/components/bead-pr-section";
 import { CopyableText } from "@/components/copyable-text";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
 import { DesignDocViewer } from "@/components/design-doc-viewer";
-import { EditableField } from "@/components/editable-field";
 import { SubtaskList } from "@/components/subtask-list";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogClose,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -30,7 +40,7 @@ import {
   formatWorktreePath,
   getStatusDotColor,
 } from "@/lib/bead-utils";
-import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
+import { updateStatus as cliUpdateStatus, deleteBead } from "@/lib/cli";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, WorktreeStatus } from "@/types";
 
@@ -50,7 +60,7 @@ export interface BeadDetailProps {
 }
 
 /**
- * Bead detail panel — slides in from the right.
+ * Bead detail modal — centered full-screen overlay.
  * Displays full bead information with metadata, PR section, subtasks, and comments.
  */
 export function BeadDetail({
@@ -79,35 +89,19 @@ export function BeadDetail({
   const isReadOnly = !projectPath;
   const isDolt = projectPath ? isDoltProject(projectPath) : false;
 
-  const handleSaveTitle = useCallback(async (newTitle: string) => {
-    if (!projectPath) return;
-    try {
-      if (isDolt) {
-        await api.beads.update({ path: projectPath, id: bead.id, title: newTitle });
-      } else {
-        await updateTitle(bead.id, newTitle, projectPath);
-      }
-      onUpdate?.();
-    } catch (err) {
-      toast({ variant: "destructive", title: "Failed to update title", description: err instanceof Error ? err.message : "Unknown error" });
-      throw err;
-    }
-  }, [bead.id, projectPath, isDolt, onUpdate]);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
-  const handleSaveDescription = useCallback(async (newDesc: string) => {
+  const handleDelete = useCallback(async () => {
     if (!projectPath) return;
     try {
-      if (isDolt) {
-        await api.beads.update({ path: projectPath, id: bead.id, description: newDesc });
-      } else {
-        await updateDescription(bead.id, newDesc, projectPath);
-      }
+      await deleteBead(bead.id, projectPath);
+      setIsDeleteConfirmOpen(false);
+      onOpenChange(false);
       onUpdate?.();
     } catch (err) {
-      toast({ variant: "destructive", title: "Failed to update description", description: err instanceof Error ? err.message : "Unknown error" });
-      throw err;
+      toast({ variant: "destructive", title: "Failed to delete bead", description: err instanceof Error ? err.message : "Unknown error" });
     }
-  }, [bead.id, projectPath, isDolt, onUpdate]);
+  }, [bead.id, projectPath, onOpenChange, onUpdate]);
 
   const handleStatusChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!projectPath) return;
@@ -184,8 +178,6 @@ export function BeadDetail({
   }, []);
 
   // Clear any lingering inline body styles when design doc dialog closes.
-  // RemoveScroll (used by MorphingDialog) manages scroll locking via a <style>
-  // tag — but any inline body styles we set bypass its cleanup, so we clear them here.
   useEffect(() => {
     if (!isDesignDocFullScreen) {
       document.body.style.overflow = '';
@@ -202,15 +194,22 @@ export function BeadDetail({
           onClick={() => onOpenChange(false)}
         />
       )}
-      {/* Slide-in panel */}
+      {/* Full-screen centered modal */}
       <div
         className={cn(
-          "fixed inset-y-0 right-0 z-50 w-full sm:max-w-lg md:max-w-xl overflow-y-auto bg-surface-base border-l border-b-default p-6 shadow-lg transition-transform duration-300 ease-in-out",
-          open ? "translate-x-0" : "translate-x-full",
+          "fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 pointer-events-none",
+          open ? "pointer-events-auto" : "pointer-events-none",
           isDesignDocFullScreen && "invisible"
         )}
       >
-          {/* Header with Back button */}
+        <div
+          className={cn(
+            "relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl bg-surface-base border border-b-default shadow-2xl p-6 md:p-8",
+            "transition-all duration-200 ease-out",
+            open ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none"
+          )}
+        >
+          {/* Header with Back button and Delete button */}
           <div className="flex items-center justify-between mb-6">
             <Button
               variant="ghost"
@@ -221,6 +220,18 @@ export function BeadDetail({
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               Back
             </Button>
+            <div className="flex items-center gap-1">
+              {!isReadOnly && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsDeleteConfirmOpen(true)}
+                  className="text-destructive hover:text-destructive gap-1.5"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -232,18 +243,14 @@ export function BeadDetail({
                 </CopyableText>
               )}
               {ticketNumber !== undefined && " "}
-              <CopyableText copyText={bead.id}>
+              <CopyableText copyText={bead.id} variant="pill">
                 {formatBeadId(bead.id, 8)}
               </CopyableText>
             </p>
 
             {/* Title */}
             <h2 className="text-xl font-semibold leading-tight text-t-primary">
-              <EditableField
-                value={bead.title}
-                onSave={handleSaveTitle}
-                disabled={isReadOnly}
-              />
+              {bead.title}
             </h2>
 
             {/* Worktree path */}
@@ -252,7 +259,27 @@ export function BeadDetail({
                 "font-mono text-xs text-t-muted",
                 bead.status === "closed" && "opacity-40"
               )}>
-                {formatWorktreePath(worktreeStatus.worktree_path)}
+                <span
+                  className="cursor-pointer hover:text-t-secondary hover:underline"
+                  title="Cmd+Click to open in VS Code, double-click to select"
+                  onClick={(e) => {
+                    if (e.metaKey && worktreeStatus.worktree_path) {
+                      api.fs.openExternal(worktreeStatus.worktree_path, 'vscode');
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    const target = e.currentTarget;
+                    const selection = window.getSelection();
+                    if (selection) {
+                      const range = document.createRange();
+                      range.selectNodeContents(target);
+                      selection.removeAllRanges();
+                      selection.addRange(range);
+                    }
+                  }}
+                >
+                  {formatWorktreePath(worktreeStatus.worktree_path)}
+                </span>
               </div>
             )}
           </div>
@@ -304,21 +331,70 @@ export function BeadDetail({
           )}
 
           {/* Description */}
-          {(bead.description || !isReadOnly) && (
+          {bead.description && (
             <div className="mt-6">
               <h3 className="text-sm font-semibold mb-2 text-t-secondary">Description</h3>
               <div className="h-px bg-b-default mb-3" />
-              <div className="text-sm text-t-tertiary leading-relaxed whitespace-pre-wrap">
-                <EditableField
-                  value={bead.description ?? ""}
-                  onSave={handleSaveDescription}
-                  disabled={isReadOnly}
-                  multiline
-                  placeholder="Add a description…"
-                />
+              <div className="prose prose-sm prose-invert max-w-none text-sm text-t-tertiary leading-relaxed">
+                <ReactMarkdown>
+                  {bead.description}
+                </ReactMarkdown>
               </div>
             </div>
           )}
+          {!bead.description && !isReadOnly && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold mb-2 text-t-secondary">Description</h3>
+              <div className="h-px bg-b-default mb-3" />
+              <span className="text-t-faint italic text-sm">No description</span>
+            </div>
+          )}
+
+          {/* Metadata Key-Value */}
+          {(() => {
+            const metaFields = [
+              { key: 'Priority', value: bead.priority !== undefined ? bead.priority : null },
+              { key: 'Owner', value: bead.owner || null },
+              { key: 'Parent', value: bead.parent_id || null },
+              { key: 'Dependencies', value: bead.deps && bead.deps.length > 0 ? bead.deps : null },
+              { key: 'Related To', value: bead.relates_to && bead.relates_to.length > 0 ? bead.relates_to : null },
+            ].filter(f => f.value !== null);
+
+            if (metaFields.length === 0) return null;
+
+            return (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold mb-2 text-t-secondary">Details</h3>
+                <div className="h-px bg-b-default mb-3" />
+                <div className="space-y-3">
+                  {metaFields.map(({ key, value }) => (
+                    <div key={key}>
+                      <div className="text-xs font-semibold text-t-secondary mb-0.5">{key}</div>
+                      {key === 'Priority' ? (
+                        <span className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold",
+                          value === 0 ? "bg-danger/15 text-danger" :
+                          value === 1 ? "bg-blocked-accent/15 text-blocked-accent" :
+                          value === 2 ? "bg-warning/15 text-warning" :
+                          "bg-surface-overlay text-t-muted"
+                        )}>
+                          P{value as number}
+                        </span>
+                      ) : Array.isArray(value) ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(value as string[]).map(id => (
+                            <CopyableText key={id} copyText={id} variant="pill">{id}</CopyableText>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-t-primary font-mono select-all cursor-text">{value as string}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Related Tasks */}
           {relatedTasks.length > 0 && onChildClick && (
@@ -412,14 +488,15 @@ export function BeadDetail({
           {/* Children slot for comments + timeline */}
           {children && <div className="mt-6">{children}</div>}
 
-        {/* Close button */}
-        <button
-          onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-        >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </button>
+          {/* Close button */}
+          <button
+            onClick={() => onOpenChange(false)}
+            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </button>
+        </div>
       </div>
 
       {/* Add Subtask Dialog (for epics) */}
@@ -432,6 +509,22 @@ export function BeadDetail({
           parentId={bead.id}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <AlertDialogContent className="bg-surface-raised border-b-default">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-t-primary">Delete bead?</AlertDialogTitle>
+            <AlertDialogDescription className="text-t-muted">
+              This will permanently delete this bead and all its comments. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline">Cancel</Button>} />
+            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

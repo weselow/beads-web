@@ -242,3 +242,19 @@ export async function listBeads(cwd?: string): Promise<string> {
 
   return result.stdout;
 }
+
+/**
+ * Delete a bead permanently
+ *
+ * Executes: bd delete <beadId>
+ *
+ * @param beadId - The ID of the bead to delete
+ * @param cwd - Working directory (project path)
+ * @throws Error if command fails
+ */
+export async function deleteBead(beadId: string, cwd?: string): Promise<void> {
+  const result = await executeBdCommand(["delete", beadId], cwd);
+  if (!result.success) {
+    throw new Error(result.stderr || `Failed to delete bead: exit code ${result.code}`);
+  }
+}
