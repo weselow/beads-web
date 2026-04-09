@@ -40,6 +40,15 @@ async function executeBdCommand(
   };
 }
 
+const customStatusConfigured = new Set<string>();
+
+async function ensureInReviewStatus(cwd?: string): Promise<void> {
+  const key = cwd ?? '__default__';
+  if (customStatusConfigured.has(key)) return;
+  await executeBdCommand(['config', 'set', 'status.custom', 'inreview'], cwd);
+  customStatusConfigured.add(key);
+}
+
 /**
  * Add a comment to a bead
  *
@@ -60,7 +69,7 @@ export async function addComment(
   message: string,
   cwd?: string
 ): Promise<void> {
-  const result = await executeBdCommand(["comment", beadId, message], cwd);
+  const result = await executeBdCommand(["comments", "add", beadId, message], cwd);
 
   if (!result.success) {
     throw new Error(result.stderr || `Failed to add comment: exit code ${result.code}`);
@@ -87,6 +96,9 @@ export async function updateStatus(
   status: BeadStatus,
   cwd?: string
 ): Promise<void> {
+  if (status === 'inreview') {
+    await ensureInReviewStatus(cwd);
+  }
   const result = await executeBdCommand(
     ["update", beadId, "--status", status],
     cwd
