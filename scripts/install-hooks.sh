@@ -14,6 +14,22 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
+# ── bd config: disable auto git-add (bd-beads-web-b9c) ────────────────
+# bd v1.0.2 auto-export runs `git add issues.jsonl` relative to CWD,
+# which creates stray files at worktree roots. Apply the config fix on
+# every `npm install` so new clones and CI pick it up automatically.
+# .beads/ is gitignored, so each checkout gets its own local config.yaml.
+# bd itself walks up to find .beads/, so we let bd's own resolver gate us:
+# if `bd config get` fails (no .beads/ found anywhere), skip silently.
+if command -v bd >/dev/null 2>&1; then
+  CURRENT_GIT_ADD="$(bd config get export.git-add 2>/dev/null || true)"
+  if [ -n "$CURRENT_GIT_ADD" ] && [ "$CURRENT_GIT_ADD" != "false" ]; then
+    if bd config set export.git-add false >/dev/null 2>&1; then
+      echo "bd config: export.git-add=false (prevents stray issues.jsonl in worktrees)"
+    fi
+  fi
+fi
+
 # For worktrees, hooks live in the common git dir
 HOOKS_DIR="$(git rev-parse --git-common-dir)/hooks"
 mkdir -p "$HOOKS_DIR"
