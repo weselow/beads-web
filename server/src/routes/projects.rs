@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{
-    CreateProjectInput, CreateTagInput, Database, DbError, ProjectTagInput, ProjectWithTags, Tag,
-    UpdateProjectInput,
+    CachedCounts, CreateProjectInput, CreateTagInput, Database, DbError, ProjectTagInput,
+    ProjectWithTags, Tag, UpdateProjectInput,
 };
 
 /// Application state containing the database
@@ -57,11 +57,22 @@ pub struct ListProjectsParams {
     pub include_archived: Option<bool>,
 }
 
-/// GET /api/projects - List all projects with their tags
+/// A project list entry — `ProjectWithTags` flattened with the cached
+/// bead counts attached. The `cachedCounts` field is `null` until
+/// `/api/beads` has been called for the project at least once.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWithTagsAndCounts {
+    #[serde(flatten)]
+    pub project: ProjectWithTags,
+    pub cached_counts: Option<CachedCounts>,
+}
+
+/// GET /api/projects - List all projects with their tags and cached bead counts
 pub async fn list_projects(
     State(db): State<AppState>,
     Query(params): Query<ListProjectsParams>,
-) -> Result<Json<Vec<ProjectWithTags>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<Vec<ProjectWithTagsAndCounts>>, (StatusCode, Json<ErrorResponse>)> {
     let include_archived = params.include_archived.unwrap_or(false);
     let mut projects = db.get_projects_with_tags_filtered(include_archived).map_err(db_error_response)?;
     // Normalize Windows backslashes in paths for consistent frontend behavior
@@ -71,7 +82,29 @@ pub async fn list_projects(
             p.local_path = Some(lp.replace('\\', "/"));
         }
     }
-    Ok(Json(projects))
+
+    let mut result = Vec::with_capacity(projects.len());
+    for project in projects {
+        // Cache reads are best-effort — log and fall back to None on error
+        // so a single corrupt row can't block the whole projects list.
+        let cached_counts = match db.get_cached_counts(&project.id) {
+            Ok(counts) => counts,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to read cached counts for project {}: {}",
+                    project.id,
+                    e
+                );
+                None
+            }
+        };
+        result.push(ProjectWithTagsAndCounts {
+            project,
+            cached_counts,
+        });
+    }
+
+    Ok(Json(result))
 }
 
 /// POST /api/projects - Create a new project
@@ -212,4 +245,65 @@ pub fn project_routes() -> axum::Router<AppState> {
         // Project-tag relationship routes
         .route("/project-tags", post(add_project_tag))
         .route("/project-tags/:project_id/:tag_id", delete(remove_project_tag))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_project_with_tags() -> ProjectWithTags {
+        ProjectWithTags {
+            id: "proj-1".to_string(),
+            name: "Sample".to_string(),
+            path: "/sample".to_string(),
+            local_path: None,
+            tags: vec![],
+            last_opened: "2026-04-22T10:00:00Z".to_string(),
+            created_at: "2026-04-22T09:00:00Z".to_string(),
+            archived_at: None,
+        }
+    }
+
+    #[test]
+    fn test_project_with_counts_serializes_camel_case_and_flattens() {
+        let entry = ProjectWithTagsAndCounts {
+            project: make_project_with_tags(),
+            cached_counts: Some(CachedCounts {
+                open: 3,
+                in_progress: 1,
+                inreview: 0,
+                closed: 2,
+                data_source: Some("cli".to_string()),
+                updated_at: "2026-04-22T10:00:00Z".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+
+        // Flattened fields preserve ProjectWithTags' camelCase rename
+        assert!(json.contains("\"lastOpened\":\"2026-04-22T10:00:00Z\""));
+        assert!(json.contains("\"createdAt\":\"2026-04-22T09:00:00Z\""));
+        assert!(json.contains("\"localPath\":null"));
+        assert!(json.contains("\"archivedAt\":null"));
+
+        // cachedCounts wrapper is camelCase
+        assert!(json.contains("\"cachedCounts\":{"));
+        // CachedCounts inner fields are camelCase
+        assert!(json.contains("\"inProgress\":1"));
+        assert!(json.contains("\"dataSource\":\"cli\""));
+        assert!(json.contains("\"updatedAt\":\"2026-04-22T10:00:00Z\""));
+        // No snake_case leaks
+        assert!(!json.contains("\"in_progress\""));
+        assert!(!json.contains("\"data_source\""));
+        assert!(!json.contains("\"cached_counts\""));
+    }
+
+    #[test]
+    fn test_project_with_counts_serializes_null_when_no_cache() {
+        let entry = ProjectWithTagsAndCounts {
+            project: make_project_with_tags(),
+            cached_counts: None,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("\"cachedCounts\":null"));
+    }
 }
