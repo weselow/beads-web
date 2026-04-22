@@ -46,9 +46,9 @@ if command -v bd >/dev/null 2>&1; then
   fi
 
   if [ -n "$BEADS_DIR" ]; then
-    if ! bd sync --flush-only >/dev/null 2>&1; then
+    if ! bd export -o "$BEADS_DIR/issues.jsonl" >/dev/null 2>&1; then
       echo "Error: Failed to flush bd changes to JSONL" >&2
-      echo "Run 'bd sync --flush-only' manually to diagnose" >&2
+      echo "Run 'bd export -o .beads/issues.jsonl' manually to diagnose" >&2
       exit 1
     fi
     if [ -f "$BEADS_DIR/issues.jsonl" ]; then
