@@ -35,7 +35,7 @@ Rule of thumb: 1 bead = 1 PR = 1 reviewable diff.
 ### Status discipline:
 - Created → `open` (default)
 - Starting work → `bd update {ID} --status in_progress`
-- Submitted for review → `bd update {ID} --status inreview`
+- Pushed / PR open → leave in `in_progress` (orchestrator closes after merge)
 - Merged/done → `bd close {ID}`
 - **Never leave a bead in `in_progress` across sessions without reason**
 
@@ -81,8 +81,7 @@ Execute ALL steps in order:
    BAD: "LEARNED: fixed async issue" — useless for future search
    GOOD: "LEARNED: pg connection pool exhaustion under load → set max=20 and idle_timeout=30s. Default max=10 caused 503s at >50 rps"
 5. Leave completion comment: `bd comments add {BEAD_ID} "Completed: [summary]"`
-6. Mark status: `bd update {BEAD_ID} --status inreview`
-7. Return completion report (checklist is MANDATORY — hook will block without it):
+6. Return completion report (checklist is MANDATORY — hook will block without it):
    ```
    BEAD {BEAD_ID} COMPLETE
    Worktree: .worktrees/bd-{BEAD_ID}
@@ -94,14 +93,16 @@ Execute ALL steps in order:
    Summary: [1 sentence]
    ```
 
+Do not update status to `inreview` — this status was removed in bd v1.0.2. Leave the bead in `in_progress` until the orchestrator closes it after the PR merges.
+
 ## bd command reference (use ONLY these — do NOT invent commands)
 
 | Action | Command |
 |--------|---------|
 | Create | `bd create --title="..." -d "..." [--type task\|bug\|feature\|epic] [--parent ID]` |
-| List | `bd list [--status open\|in_progress\|inreview\|done] [--json]` |
+| List | `bd list [--status open\|in_progress\|blocked\|deferred\|closed] [--json]` |
 | Show | `bd show {ID} [--json]` |
-| Update | `bd update {ID} --status in_progress\|inreview [--title\|--description\|--notes]` |
+| Update | `bd update {ID} --status in_progress\|blocked\|deferred [--title\|--description\|--notes]` |
 | Close | `bd close {ID} [--reason "..."]` |
 | Comments | `bd comments {ID}` / `bd comments add {ID} "text"` |
 | Dependencies | `bd dep add {ID} {BLOCKS_ID}` |
