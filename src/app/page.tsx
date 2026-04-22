@@ -246,6 +246,7 @@ export default function ProjectsPage() {
                   localPath={project.localPath}
                   tags={project.tags}
                   beadCounts={project.beadCounts}
+                  countsLoaded={project.countsLoaded ?? false}
                   dataSource={project.dataSource}
                   beadError={project.beadError}
                   archivedAt={project.archivedAt}

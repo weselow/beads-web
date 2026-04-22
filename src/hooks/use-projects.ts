@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-import { loadProjectBeads, groupBeadsByStatus } from "@/lib/beads-parser";
 import * as api from "@/lib/api";
+import { loadProjectBeads, groupBeadsByStatus } from "@/lib/beads-parser";
 import {
   getProjectsWithTags,
   createProject,
@@ -54,15 +54,46 @@ export function useProjects(): UseProjectsResult {
       const data = await getProjectsWithTags(showArchivedRef.current);
       if (loadId !== loadingRef.current) return;
 
-      // Show projects immediately, preserving existing bead counts from previous load
+      // Show projects immediately. Seed bead counts from (in priority order):
+      //   1. The previous in-memory project (covers live refreshes).
+      //   2. The server-provided `cachedCounts` from the SQLite cache
+      //      (covers cold loads — instant donut paint).
+      //   3. `zeroCounts` as a last-resort empty state. In that case
+      //      `countsLoaded` stays false so the card can render a dashed
+      //      placeholder donut instead of misleading "0/0/0/0" values.
       const zeroCounts: BeadCounts = { open: 0, in_progress: 0, inreview: 0, closed: 0 };
       setProjects((prev) => {
         const prevMap = new Map(prev.map((p) => [p.id, p]));
-        return data.map((p) => ({
-          ...p,
-          beadCounts: prevMap.get(p.id)?.beadCounts ?? zeroCounts,
-          dataSource: prevMap.get(p.id)?.dataSource,
-        }));
+        return data.map((p) => {
+          const prevProject = prevMap.get(p.id);
+          const cached = p.cachedCounts ?? null;
+
+          // Prefer previous in-memory counts (freshest), then server cache.
+          const hasPrev = prevProject?.beadCounts !== undefined && prevProject.countsLoaded === true;
+          const beadCounts: BeadCounts = hasPrev
+            ? prevProject!.beadCounts!
+            : cached
+              ? {
+                  open: cached.open,
+                  in_progress: cached.in_progress,
+                  inreview: cached.inreview,
+                  closed: cached.closed,
+                }
+              : zeroCounts;
+
+          const dataSource = hasPrev
+            ? prevProject!.dataSource
+            : cached?.dataSource ?? undefined;
+
+          const countsLoaded = hasPrev || cached !== null;
+
+          return {
+            ...p,
+            beadCounts,
+            dataSource: dataSource ?? undefined,
+            countsLoaded,
+          };
+        });
       });
       setIsLoading(false);
 
@@ -118,7 +149,15 @@ export function useProjects(): UseProjectsResult {
                 setProjects((prev) =>
                   prev.map((p) =>
                     p.id === result.id
-                      ? { ...p, beadCounts: result.beadCounts, dataSource: result.dataSource, beadError: result.beadError }
+                      ? {
+                          ...p,
+                          beadCounts: result.beadCounts,
+                          dataSource: result.dataSource,
+                          beadError: result.beadError,
+                          // Fresh data has landed — donut should switch from
+                          // dashed (if it was dashed) to solid.
+                          countsLoaded: true,
+                        }
                       : p
                   )
                 );
