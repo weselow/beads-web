@@ -18,3 +18,21 @@ export function cn(...inputs: ClassValue[]): string {
 export function isDoltProject(path: string | null | undefined): boolean {
   return !!path && path.startsWith("dolt://");
 }
+
+/**
+ * Derive a `bd init --prefix <slug>` slug from a project path (or name fallback).
+ *
+ * Rules:
+ *  - If `path` is a `dolt://` URL or empty, fall back to `name`.
+ *  - Otherwise take the last path segment (splitting on both `/` and `\`).
+ *  - Lowercase, replace any non-alphanumeric run with a single dash, trim dashes.
+ */
+export function deriveBeadPrefix(path: string, name: string): string {
+  const isDolt = path.startsWith("dolt://");
+  const lastSegment = path.split(/[\\/]/).filter(Boolean).pop();
+  const base = !path || isDolt ? name : (lastSegment ?? name);
+  return base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
