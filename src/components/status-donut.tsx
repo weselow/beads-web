@@ -13,6 +13,13 @@ interface StatusDonutProps {
   beadCounts: BeadCounts;
   size?: number;
   className?: string;
+  /**
+   * When `false`, renders a dashed/outline placeholder donut regardless
+   * of the numeric counts. Used on the home page to signal "counts are
+   * still loading from the backend, no cached value yet" without
+   * showing a misleading "0 tasks" state.
+   */
+  countsLoaded?: boolean;
 }
 
 // Status colors via CSS variables (semantic tokens from globals.css)
@@ -64,7 +71,7 @@ function StatusTooltip({ beadCounts, total }: { beadCounts: BeadCounts; total: n
   );
 }
 
-export function StatusDonut({ beadCounts, size = 40, className }: StatusDonutProps) {
+export function StatusDonut({ beadCounts, size = 40, className, countsLoaded = true }: StatusDonutProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   const chartData = useMemo(() => {
@@ -80,17 +87,22 @@ export function StatusDonut({ beadCounts, size = 40, className }: StatusDonutPro
     return beadCounts.open + beadCounts.in_progress + beadCounts.inreview + beadCounts.closed;
   }, [beadCounts]);
 
-  // If no tasks, show empty state
-  if (total === 0) {
+  // Dashed placeholder when counts haven't loaded yet, OR when the
+  // project genuinely has no tasks. Same visual — the former resolves
+  // to a solid donut on its own once `countsLoaded` flips to true, the
+  // latter stays dashed indefinitely which is correct semantics.
+  if (!countsLoaded || total === 0) {
+    const label = !countsLoaded ? "Loading tasks" : "No tasks";
     return (
       <div
         className={className}
         style={{ width: size, height: size }}
-        aria-label="No tasks"
+        aria-label={label}
+        aria-busy={!countsLoaded}
       >
         <div
           className="rounded-full border-2 border-dashed border-b-strong w-full h-full"
-          title="No tasks"
+          title={label}
         />
       </div>
     );

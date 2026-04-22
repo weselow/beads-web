@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Archive, ArchiveRestore, Code, FolderOpen, Loader2, Settings } from "lucide-react";
 
 import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
-
 import { StatusDonut } from "@/components/status-donut";
 import { TagPicker } from "@/components/tag-picker";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +53,12 @@ interface ProjectCardProps {
   localPath?: string;
   tags: Tag[];
   beadCounts?: BeadCounts;
+  /**
+   * True once `beadCounts` reflects either cached or freshly-fetched
+   * data. When false, the card renders a dashed placeholder donut so
+   * the user never sees misleading zeros on first paint.
+   */
+  countsLoaded?: boolean;
   dataSource?: string;
   beadError?: string;
   archivedAt?: string;
@@ -71,6 +76,7 @@ export function ProjectCard({
   localPath,
   tags,
   beadCounts = { open: 0, in_progress: 0, inreview: 0, closed: 0 },
+  countsLoaded = true,
   dataSource,
   beadError,
   archivedAt,
@@ -149,7 +155,7 @@ export function ProjectCard({
             </Tooltip>
           </TooltipProvider>
         ) : (
-          <StatusDonut beadCounts={beadCounts} size={36} />
+          <StatusDonut beadCounts={beadCounts} size={36} countsLoaded={countsLoaded} />
         )}
         <div
           className="flex flex-wrap items-center gap-1.5"

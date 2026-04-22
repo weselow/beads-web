@@ -9,6 +9,20 @@ export interface BeadCounts {
 }
 
 /**
+ * Cached per-project bead counts served by `GET /api/projects`.
+ *
+ * Populated by the backend after any successful `/api/beads` read and
+ * used by the home page to render donut charts immediately on first
+ * paint, before fresh counts finish loading.
+ */
+export interface CachedCounts extends BeadCounts {
+  /** Source that produced these cached counts (e.g. 'dolt-direct', 'jsonl'). */
+  dataSource?: string | null;
+  /** ISO-8601 timestamp of when the cache row was last refreshed. */
+  updatedAt: string;
+}
+
+/**
  * Project stored in local SQLite
  */
 export interface Project {
@@ -23,6 +37,19 @@ export interface Project {
   beadCounts?: BeadCounts;
   dataSource?: string;
   beadError?: string;
+  /**
+   * Cached counts payload from the server. Present on responses from
+   * `GET /api/projects` when a cache row exists, `null` for brand-new
+   * projects that have never been read yet. Consumed by `useProjects`
+   * to seed `beadCounts` on initial render for instant donut paint.
+   */
+  cachedCounts?: CachedCounts | null;
+  /**
+   * True once counts on this project have been seeded from either the
+   * server cache OR an in-memory previous load. False while we are
+   * showing an empty placeholder donut awaiting the first fetch.
+   */
+  countsLoaded?: boolean;
 }
 
 /**
