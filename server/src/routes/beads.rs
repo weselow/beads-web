@@ -21,6 +21,7 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use super::validate_path_security;
+use crate::db::{CachedCounts, Database};
 use crate::dolt::{self, DoltManager};
 
 /// Resolves the Dolt server port for a project.
@@ -290,6 +291,66 @@ fn extract_json_array(output: &str) -> Result<&str, String> {
     }
 }
 
+/// Computes bead counts from a slice of beads and upserts them into the
+/// local SQLite cache so the home page can render donut charts instantly.
+///
+/// Cache writes are best-effort — failures are logged but never propagated
+/// to the `/api/beads` response. The `project_path` is looked up against
+/// the `projects` table; if no matching project exists (e.g. `dolt://`
+/// paths or paths unknown to the local DB), the cache is skipped.
+fn upsert_counts_cache(
+    db: &Database,
+    project_path: &str,
+    data_source: &str,
+    beads: &[Bead],
+) {
+    let project = match db.get_project_by_path(project_path) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            tracing::debug!(
+                "No project row for path {}, skipping counts cache",
+                project_path
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("Failed to look up project by path {}: {}", project_path, e);
+            return;
+        }
+    };
+
+    let mut open = 0i64;
+    let mut in_progress = 0i64;
+    let mut inreview = 0i64;
+    let mut closed = 0i64;
+    for bead in beads {
+        match bead.status.as_str() {
+            "open" => open += 1,
+            "in_progress" => in_progress += 1,
+            "inreview" => inreview += 1,
+            "closed" => closed += 1,
+            _ => {}
+        }
+    }
+
+    let counts = CachedCounts {
+        open,
+        in_progress,
+        inreview,
+        closed,
+        data_source: Some(data_source.to_string()),
+        updated_at: Utc::now().to_rfc3339(),
+    };
+
+    if let Err(e) = db.upsert_cached_counts(&project.id, &counts) {
+        tracing::warn!(
+            "Failed to upsert cached counts for project {}: {}",
+            project.id,
+            e
+        );
+    }
+}
+
 /// Reads beads from the Dolt database via `bd` CLI.
 ///
 /// Calls `bd list --json` for issues and `bd sql` for comments,
@@ -376,8 +437,13 @@ const DOLT_PATH_PREFIX: &str = "dolt://";
 ///
 /// Reads beads from a project. For `dolt://` paths, reads directly from Dolt SQL.
 /// For filesystem paths, uses three-tier fallback: Dolt SQL → bd CLI → JSONL.
+///
+/// On every successful read, the computed per-status bead counts are upserted
+/// into the local SQLite cache (`project_bead_counts`) so `/api/projects` can
+/// return them for instant home-page rendering. Cache writes are best-effort.
 pub async fn read_beads(
     Extension(dolt_manager): Extension<Arc<DoltManager>>,
+    Extension(db): Extension<Arc<Database>>,
     Query(params): Query<BeadsParams>,
 ) -> impl IntoResponse {
     // Normalize Windows backslashes to forward slashes
@@ -394,6 +460,7 @@ pub async fn read_beads(
         return match dolt_manager.read_beads(db_name).await {
             Ok(beads) => {
                 let beads = post_process_beads(beads);
+                upsert_counts_cache(&db, &path, "dolt-direct", &beads);
                 (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-direct" })))
             }
             Err(e) => (
@@ -446,6 +513,7 @@ pub async fn read_beads(
                     Ok(beads) => {
                         tracing::info!("Read {} beads from per-project Dolt (port {})", beads.len(), port);
                         let beads = post_process_beads(beads);
+                        upsert_counts_cache(&db, &path, "dolt-project", &beads);
                         return (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-project" })));
                     }
                     Err(e) => {
@@ -508,6 +576,7 @@ pub async fn read_beads(
     };
 
     let beads = post_process_beads(beads);
+    upsert_counts_cache(&db, &path, source, &beads);
     (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": source })))
 }
 
