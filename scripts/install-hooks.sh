@@ -63,6 +63,14 @@ fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
+# In a worktree, node_modules lives in the main checkout (git-common-dir parent).
+# In the main repo, it's the same as REPO_ROOT.
+if [ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]; then
+  NODE_MODULES_ROOT="$(dirname "$(git rev-parse --git-common-dir)")"
+else
+  NODE_MODULES_ROOT="$REPO_ROOT"
+fi
+
 # ── Collect staged files ───────────────────────────────────────────────
 
 STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMR)"
@@ -93,19 +101,19 @@ EXIT_CODE=0
 # ── Frontend checks ───────────────────────────────────────────────────
 
 if [ -n "$FRONTEND_FILES" ]; then
-  if [ ! -d "$REPO_ROOT/node_modules" ]; then
+  if [ ! -d "$NODE_MODULES_ROOT/node_modules" ]; then
     echo "Warning: node_modules not found, skipping frontend checks" >&2
     echo "  Run 'npm install' to enable pre-commit linting" >&2
   else
     echo "Running ESLint on staged files..."
     # shellcheck disable=SC2086
-    if ! "$REPO_ROOT/node_modules/.bin/eslint" --max-warnings 0 $FRONTEND_FILES; then
+    if ! "$NODE_MODULES_ROOT/node_modules/.bin/eslint" --max-warnings 0 $FRONTEND_FILES; then
       echo "ESLint failed. Fix errors or run: npx eslint --fix <files>" >&2
       EXIT_CODE=1
     fi
 
     echo "Running TypeScript type-check..."
-    if ! "$REPO_ROOT/node_modules/.bin/tsc" --noEmit; then
+    if ! "$NODE_MODULES_ROOT/node_modules/.bin/tsc" --noEmit; then
       echo "TypeScript type-check failed." >&2
       EXIT_CODE=1
     fi
