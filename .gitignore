@@ -47,6 +47,9 @@ next-env.d.ts
 AGENTS.md
 CLAUDE.md
 
+# Stray bd auto-export files (bd v1.0.2 CWD bug — see beads-web-b9c)
+/issues.jsonl
+
 # spec and test files
 SPEC.md
 test-*.md
