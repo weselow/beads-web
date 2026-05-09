@@ -164,6 +164,7 @@ export function KanbanColumn({
               <BeadCard
                 key={bead.id}
                 bead={bead}
+                allBeads={allBeads}
                 ticketNumber={ticketNumbers?.get(bead.id)}
                 isSelected={selectedBeadId === bead.id}
                 onSelect={onSelectBead}

@@ -11,6 +11,8 @@ import type { Bead, WorktreeStatus, PRStatus, StatusBadgeInfo } from "@/types";
 
 export interface BeadCardProps {
   bead: Bead;
+  /** All beads on the board, used to resolve dep statuses for blocked detection */
+  allBeads: Bead[];
   ticketNumber?: number;
   /** Worktree status for the bead */
   worktreeStatus?: WorktreeStatus;
@@ -144,9 +146,9 @@ function getStatusBadgeClasses(variant: StatusBadgeInfo['variant']): string {
   }
 }
 
-export function BeadCard({ bead, ticketNumber, worktreeStatus, prStatus, isSelected = false, onSelect }: BeadCardProps) {
+export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatus, isSelected = false, onSelect }: BeadCardProps) {
   const { layout } = useTheme();
-  const blocked = isBlocked(bead);
+  const blocked = isBlocked(bead, allBeads);
   const commentCount = (bead.comments ?? []).length;
   const relatedCount = (bead.relates_to ?? []).length;
 

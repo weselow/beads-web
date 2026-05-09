@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useTheme } from "@/hooks/use-theme";
 import * as api from "@/lib/api";
-import { formatBeadId, truncate } from "@/lib/bead-utils";
+import { formatBeadId, isBlocked, truncate } from "@/lib/bead-utils";
 import { closeBead } from "@/lib/cli";
 import { computeEpicProgress } from "@/lib/epic-parser";
 import { cn, isDoltProject } from "@/lib/utils";
@@ -377,7 +377,12 @@ export function EpicCard({
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <DependencyBadge deps={epic.deps} blockers={epic.blockers} onNavigate={onNavigateToDependency} />
+            <DependencyBadge
+              deps={epic.deps}
+              blockers={epic.blockers}
+              isBlocked={isBlocked(epic, allBeads)}
+              onNavigate={onNavigateToDependency}
+            />
             <Badge variant="outline" className="text-[10px] px-2 py-0.5 border-epic/30 text-epic bg-epic/20 font-semibold">EPIC</Badge>
           </div>
         </div>

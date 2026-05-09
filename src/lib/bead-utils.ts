@@ -97,9 +97,28 @@ export function truncate(text: string, maxLength: number): string {
 
 /**
  * Detect if bead is blocked by checking for unresolved dependencies.
- * Closed tasks are never blocked.
+ *
+ * A bead is blocked when at least one of its dependencies (resolved
+ * via {@link allBeads}) has a status other than `closed`. Closed beads
+ * are never considered blocked. Dependencies that cannot be found in
+ * {@link allBeads} (e.g. references to deleted beads) do NOT block —
+ * this matches the behaviour of `bd ready` and `getBlockedTasks` in
+ * `epic-parser.ts`.
+ *
+ * @param bead - The bead to evaluate (only `status` and `deps` are used).
+ * @param allBeads - All beads available for dep resolution. Pass the
+ *   full board state — `deps` lookup is O(deps.length) over a Map.
  */
-export function isBlocked(bead: { status: string; deps?: string[] }): boolean {
+export function isBlocked(
+  bead: { status: string; deps?: string[] | null },
+  allBeads: ReadonlyArray<{ id: string; status: string }>,
+): boolean {
   if (bead.status === "closed") return false;
-  return (bead.deps ?? []).length > 0;
+  const deps = bead.deps ?? [];
+  if (deps.length === 0) return false;
+  const statusById = new Map(allBeads.map((b) => [b.id, b.status]));
+  return deps.some((depId) => {
+    const status = statusById.get(depId);
+    return status !== undefined && status !== "closed";
+  });
 }

@@ -11,6 +11,16 @@ export interface DependencyBadgeProps {
   deps?: string[];
   /** Bead IDs that depend on this task (this task blocks them) */
   blockers?: string[];
+  /**
+   * Whether this task is currently blocked by unresolved dependencies.
+   * The parent decides this — typically by calling `isBlocked(bead, allBeads)`
+   * from `@/lib/bead-utils` so that closed deps don't count as blocking.
+   *
+   * If omitted, the badge falls back to the legacy heuristic
+   * (`deps.length > 0`) which over-reports blocked status. New call sites
+   * should always pass this prop explicitly.
+   */
+  isBlocked?: boolean;
   /** Callback when clicking on a dependency to navigate */
   onNavigate?: (beadId: string) => void;
 }
@@ -20,11 +30,13 @@ export interface DependencyBadgeProps {
  * Red badge if this task is blocked (has unresolved deps)
  * Orange badge if this task blocks others
  */
-export function DependencyBadge({ deps, blockers, onNavigate }: DependencyBadgeProps) {
+export function DependencyBadge({ deps, blockers, isBlocked: isBlockedProp, onNavigate }: DependencyBadgeProps) {
   // Handle null values from data (default params only work for undefined)
   const safeDeps = deps ?? [];
   const safeBlockers = blockers ?? [];
-  const isBlocked = safeDeps.length > 0;
+  // Parent decides blocked state when isBlocked prop is provided.
+  // Fallback to legacy heuristic only when the prop is omitted (backwards-compat).
+  const isBlocked = isBlockedProp ?? safeDeps.length > 0;
   const isBlocking = safeBlockers.length > 0;
 
   if (!isBlocked && !isBlocking) {

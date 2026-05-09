@@ -294,7 +294,7 @@ export default function KanbanBoard() {
             <span className="uppercase">{project.name}_</span>
           </h1>
           <span className="font-mono text-xs text-t-muted uppercase tracking-widest">
-            {beads.length} beads // {beads.filter(b => b.issue_type === 'epic').length} epics // {beads.filter(b => isBlocked(b)).length} blocked
+            {beads.length} beads // {beads.filter(b => b.issue_type === 'epic').length} epics // {beads.filter(b => isBlocked(b, beads)).length} blocked
           </span>
         </div>
       ) : (

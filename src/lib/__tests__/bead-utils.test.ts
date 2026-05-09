@@ -93,16 +93,43 @@ describe('truncate', () => {
 });
 
 describe('isBlocked', () => {
-  it('returns false for closed tasks', () => {
-    expect(isBlocked({ status: 'closed', deps: ['dep1'] })).toBe(false);
+  it('returns false for closed tasks even with open deps', () => {
+    const allBeads = [{ id: 'dep1', status: 'open' }];
+    expect(isBlocked({ status: 'closed', deps: ['dep1'] }, allBeads)).toBe(false);
   });
 
-  it('returns true for open tasks with deps', () => {
-    expect(isBlocked({ status: 'open', deps: ['dep1'] })).toBe(true);
+  it('returns false for open tasks whose only dep is closed', () => {
+    const allBeads = [{ id: 'dep1', status: 'closed' }];
+    expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads)).toBe(false);
   });
 
-  it('returns false for tasks without deps', () => {
-    expect(isBlocked({ status: 'open', deps: [] })).toBe(false);
-    expect(isBlocked({ status: 'open' })).toBe(false);
+  it('returns true when at least one dep is not closed (one open, one closed)', () => {
+    const allBeads = [
+      { id: 'dep1', status: 'closed' },
+      { id: 'dep2', status: 'open' },
+    ];
+    expect(isBlocked({ status: 'open', deps: ['dep1', 'dep2'] }, allBeads)).toBe(true);
+  });
+
+  it('returns true when dep is in_progress', () => {
+    const allBeads = [{ id: 'dep1', status: 'in_progress' }];
+    expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads)).toBe(true);
+  });
+
+  it('returns false when dep references a missing bead', () => {
+    const allBeads = [{ id: 'other', status: 'open' }];
+    expect(isBlocked({ status: 'open', deps: ['ghost'] }, allBeads)).toBe(false);
+  });
+
+  it('returns false for open task with empty deps array', () => {
+    expect(isBlocked({ status: 'open', deps: [] }, [])).toBe(false);
+  });
+
+  it('returns false for open task without deps property', () => {
+    expect(isBlocked({ status: 'open' }, [])).toBe(false);
+  });
+
+  it('returns false when deps is null', () => {
+    expect(isBlocked({ status: 'open', deps: null }, [])).toBe(false);
   });
 });
