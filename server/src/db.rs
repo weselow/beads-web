@@ -434,6 +434,20 @@ impl Database {
         Ok(())
     }
 
+    /// Updates `last_opened` to current time without touching any other field. Returns ProjectNotFound when no row matches.
+    pub fn touch_project(&self, id: &str) -> Result<(), DbError> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+        let rows = conn.execute(
+            "UPDATE projects SET last_opened = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        if rows == 0 {
+            return Err(DbError::ProjectNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
     /// Looks up a project by its `path` column.
     ///
     /// Returns `Ok(None)` when no project matches (not an error — the caller
@@ -803,6 +817,49 @@ mod tests {
         let active = db.get_projects_filtered(false).unwrap();
         assert_eq!(active.len(), 1);
         assert!(active[0].archived_at.is_none());
+    }
+
+    #[test]
+    fn test_touch_project_updates_last_opened() {
+        let db = Database::new_in_memory().unwrap();
+        let project = db
+            .create_project(CreateProjectInput {
+                name: "Touchable".to_string(),
+                path: "/touch/me".to_string(),
+                local_path: None,
+            })
+            .unwrap();
+
+        let original = project.last_opened.clone();
+        // Sleep so the RFC3339 timestamp is guaranteed to differ on fast machines
+        std::thread::sleep(std::time::Duration::from_millis(20));
+
+        db.touch_project(&project.id).unwrap();
+
+        let projects = db.get_projects_filtered(false).unwrap();
+        let touched = projects
+            .iter()
+            .find(|p| p.id == project.id)
+            .expect("project should still exist after touch");
+
+        // last_opened bumped (RFC3339 string compare is monotonic for same TZ)
+        assert_ne!(touched.last_opened, original);
+        assert!(
+            touched.last_opened.as_str() > original.as_str(),
+            "expected new last_opened ({}) > original ({})",
+            touched.last_opened,
+            original
+        );
+        // Other fields untouched
+        assert_eq!(touched.name, project.name);
+        assert_eq!(touched.path, project.path);
+    }
+
+    #[test]
+    fn test_touch_project_not_found() {
+        let db = Database::new_in_memory().unwrap();
+        let result = db.touch_project("does-not-exist-uuid");
+        assert!(matches!(result, Err(DbError::ProjectNotFound(_))));
     }
 
     #[test]

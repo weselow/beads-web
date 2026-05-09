@@ -177,6 +177,15 @@ pub async fn unarchive_project(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// POST /api/projects/:id/touch — bump last_opened to now without touching other fields
+pub async fn touch_project(
+    State(db): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    db.touch_project(&id).map_err(db_error_response)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ===== Tag Routes =====
 
 /// GET /api/tags - List all tags
@@ -239,6 +248,7 @@ pub fn project_routes() -> axum::Router<AppState> {
         )
         .route("/projects/:id/archive", patch(archive_project))
         .route("/projects/:id/unarchive", patch(unarchive_project))
+        .route("/projects/:id/touch", post(touch_project))
         // Tag routes
         .route("/tags", get(list_tags).post(create_tag))
         .route("/tags/:id", delete(delete_tag))
