@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
+import * as api from "@/lib/api";
 import { getProjectWithTags, type Project, type Tag } from "@/lib/db";
 
 export interface ProjectWithTags extends Project {
@@ -25,6 +26,7 @@ export function useProject(projectId: string | null): UseProjectResult {
   const [project, setProject] = useState<ProjectWithTags | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const touchedProjectIdRef = useRef<string | null>(null);
 
   const fetchProject = useCallback(async () => {
     if (!projectId) {
@@ -39,6 +41,12 @@ export function useProject(projectId: string | null): UseProjectResult {
       setError(null);
       const data = await getProjectWithTags(projectId);
       setProject(data);
+      if (touchedProjectIdRef.current !== projectId) {
+        touchedProjectIdRef.current = projectId;
+        api.projects.touch(projectId).catch((err) => {
+          console.warn(`Failed to touch project ${projectId}:`, err);
+        });
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err : new Error("Failed to fetch project")
