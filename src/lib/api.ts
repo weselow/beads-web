@@ -108,6 +108,8 @@ export const projects = {
 
   unarchive: (id: string) => fetchApi<void>(`/api/projects/${id}/unarchive`, { method: 'PATCH' }),
 
+  touch: (id: string) => fetchApi<void>(`/api/projects/${id}/touch`, { method: 'POST' }),
+
   listAll: () => fetchApi<Project[]>('/api/projects?include_archived=true'),
 };
 
