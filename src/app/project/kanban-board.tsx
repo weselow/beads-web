@@ -234,13 +234,6 @@ export default function KanbanBoard() {
     }
   }, [projectId, router]);
 
-  /**
-   * Handle navigation from Memory panel to a bead
-   */
-  const handleMemoryNavigateToBead = useCallback((beadId: string) => {
-    setIsMemoryOpen(false);
-    navigateToBead(beadId);
-  }, [navigateToBead]);
 
   // Redirect state while no project ID
   if (!projectId) {
@@ -428,7 +421,6 @@ export default function KanbanBoard() {
           open={isMemoryOpen}
           onOpenChange={setIsMemoryOpen}
           projectPath={fsPath}
-          onNavigateToBead={handleMemoryNavigateToBead}
         />
       )}
       </ErrorBoundary>
