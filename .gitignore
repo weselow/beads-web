@@ -60,18 +60,13 @@ test-*.txt
 .worktrees/
 Vent
 
-# Agentifind generated files
-.claude/codebase.json
-.claude/CODEBASE.md
-.claude/.agentifind-checksum
+# Claude Code project config (user-specific)
+.claude/
 
 # IDE/tool artifacts
 .history/
 .playwright-mcp/
 agentform/
-
-# Claude Code local settings
-.claude/settings.local.json
 
 # Extra build targets
 /server/target2/
