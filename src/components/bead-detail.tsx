@@ -12,6 +12,8 @@ import {
   Square,
   X,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 
 import { BeadPRSection } from "@/components/bead-pr-section";
 import { CopyableText } from "@/components/copyable-text";
@@ -32,6 +34,22 @@ import {
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, WorktreeStatus } from "@/types";
+
+import "highlight.js/styles/github-dark.css";
+
+const PROSE_CLASSES =
+  "prose prose-sm dark:prose-invert max-w-none " +
+  "prose-pre:bg-zinc-900 prose-pre:text-zinc-100 " +
+  "prose-code:text-sm prose-code:bg-zinc-100 dark:prose-code:bg-zinc-800 " +
+  "prose-code:px-1 prose-code:py-0.5 prose-code:rounded";
+
+function MarkdownBody({ children }: { children: string }) {
+  return (
+    <div className={PROSE_CLASSES}>
+      <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{children}</ReactMarkdown>
+    </div>
+  );
+}
 
 
 export interface BeadDetailProps {
@@ -309,7 +327,7 @@ export function BeadDetail({
             </div>
           )}
 
-          {/* Design (collapsed by default) */}
+          {/* Design (collapsed by default; rendered as Markdown) */}
           {bead.design && (
             <details className="mt-6 group">
               <summary className="text-sm font-semibold text-t-secondary cursor-pointer list-none flex items-center gap-1.5 hover:text-t-primary">
@@ -317,13 +335,11 @@ export function BeadDetail({
                 Design
               </summary>
               <div className="h-px bg-b-default my-2" />
-              <div className="text-sm text-t-tertiary leading-relaxed whitespace-pre-wrap">
-                {bead.design}
-              </div>
+              <MarkdownBody>{bead.design}</MarkdownBody>
             </details>
           )}
 
-          {/* Notes (collapsed by default) */}
+          {/* Notes (collapsed by default; rendered as Markdown) */}
           {bead.notes && (
             <details className="mt-6 group">
               <summary className="text-sm font-semibold text-t-secondary cursor-pointer list-none flex items-center gap-1.5 hover:text-t-primary">
@@ -331,9 +347,7 @@ export function BeadDetail({
                 Notes
               </summary>
               <div className="h-px bg-b-default my-2" />
-              <div className="text-sm text-t-tertiary leading-relaxed whitespace-pre-wrap">
-                {bead.notes}
-              </div>
+              <MarkdownBody>{bead.notes}</MarkdownBody>
             </details>
           )}
 
