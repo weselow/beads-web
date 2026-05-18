@@ -12,13 +12,12 @@ import {
   Square,
   X,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
 
 import { BeadPRSection } from "@/components/bead-pr-section";
 import { CopyableText } from "@/components/copyable-text";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
 import { EditableField } from "@/components/editable-field";
+import { MarkdownBody } from "@/components/markdown-body";
 import { SubtaskList } from "@/components/subtask-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,22 +33,6 @@ import {
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, WorktreeStatus } from "@/types";
-
-import "highlight.js/styles/github-dark.css";
-
-const PROSE_CLASSES =
-  "prose prose-sm dark:prose-invert max-w-none " +
-  "prose-pre:bg-zinc-900 prose-pre:text-zinc-100 " +
-  "prose-code:text-sm prose-code:bg-zinc-100 dark:prose-code:bg-zinc-800 " +
-  "prose-code:px-1 prose-code:py-0.5 prose-code:rounded";
-
-function MarkdownBody({ children }: { children: string }) {
-  return (
-    <div className={PROSE_CLASSES}>
-      <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{children}</ReactMarkdown>
-    </div>
-  );
-}
 
 
 export interface BeadDetailProps {
@@ -315,13 +298,14 @@ export function BeadDetail({
             <div className="mt-6">
               <h3 className="text-sm font-semibold mb-2 text-t-secondary">Description</h3>
               <div className="h-px bg-b-default mb-3" />
-              <div className="text-sm text-t-tertiary leading-relaxed whitespace-pre-wrap">
+              <div className="text-sm text-t-tertiary leading-relaxed">
                 <EditableField
                   value={bead.description ?? ""}
                   onSave={handleSaveDescription}
                   disabled={isReadOnly}
                   multiline
                   placeholder="Add a description…"
+                  renderValue={(v) => <MarkdownBody>{v}</MarkdownBody>}
                 />
               </div>
             </div>

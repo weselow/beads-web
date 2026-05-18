@@ -19,6 +19,8 @@ interface EditableFieldProps {
   className?: string;
   /** Placeholder when empty */
   placeholder?: string;
+  /** Optional renderer for the display value (e.g. Markdown). Plain text used if omitted. */
+  renderValue?: (value: string) => React.ReactNode;
 }
 
 /**
@@ -32,6 +34,7 @@ export function EditableField({
   multiline,
   className,
   placeholder,
+  renderValue,
 }: EditableFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
@@ -90,12 +93,12 @@ export function EditableField({
     }
   };
 
+  const displayBody = value
+    ? (renderValue ? renderValue(value) : value)
+    : <span className="text-t-faint italic">{placeholder}</span>;
+
   if (disabled) {
-    return (
-      <span className={className}>
-        {value || <span className="text-t-faint italic">{placeholder}</span>}
-      </span>
-    );
+    return <span className={className}>{displayBody}</span>;
   }
 
   if (isSaving) {
@@ -146,7 +149,7 @@ export function EditableField({
       )}
       title="Click to edit"
     >
-      {value || <span className="text-t-faint italic">{placeholder}</span>}
+      {displayBody}
     </span>
   );
 }
