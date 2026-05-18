@@ -119,20 +119,10 @@ export function MemoryPanel({ open, onOpenChange, projectPath }: MemoryPanelProp
           className="w-full sm:max-w-lg md:max-w-xl bg-surface-base border-b-default flex flex-col"
         >
           <SheetHeader className="space-y-1">
-            <div className="flex items-center justify-between">
-              <SheetTitle className="flex items-center gap-2 text-t-primary">
-                <BrainCircuit className="size-5" aria-hidden="true" />
-                Memory
-              </SheetTitle>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(true)}
-                className="size-7 flex items-center justify-center rounded text-t-muted hover:text-t-secondary hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                aria-label="Remember something new"
-              >
-                <Plus className="size-4" />
-              </button>
-            </div>
+            <SheetTitle className="flex items-center gap-2 text-t-primary">
+              <BrainCircuit className="size-5" aria-hidden="true" />
+              Memory
+            </SheetTitle>
             <SheetDescription className="text-t-muted">
               {isLoading ? "Loading..." : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
             </SheetDescription>
@@ -163,6 +153,16 @@ export function MemoryPanel({ open, onOpenChange, projectPath }: MemoryPanelProp
               </button>
             )}
           </div>
+
+          {/* Add Memory button */}
+          <button
+            type="button"
+            onClick={() => setIsCreateOpen(true)}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded border border-b-strong bg-surface-overlay/50 text-sm text-t-secondary hover:text-t-primary hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            Add Memory
+          </button>
 
           {/* Entries list */}
           <ScrollArea className="flex-1 mt-3 -mx-6 px-6">
