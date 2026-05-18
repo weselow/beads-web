@@ -154,8 +154,10 @@ pub struct Bead {
     pub parent_id: Option<String>,
     #[serde(default)]
     pub children: Option<Vec<String>>,
-    #[serde(default, alias = "design")]
-    pub design_doc: Option<String>,
+    #[serde(default)]
+    pub design: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
     #[serde(default)]
     pub deps: Option<Vec<String>>,
     #[serde(default, alias = "related")]
@@ -1155,19 +1157,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bead_with_design_field() {
-        // Test that alias "design" works
-        let json = r#"{"id":"test-789","title":"With Design","status":"open","design":"path/to/design.md"}"#;
+    fn test_parse_bead_with_design_and_notes() {
+        let json = r#"{"id":"test-789","title":"With Design","status":"open","design":"some design notes","notes":"some extra notes"}"#;
         let bead: Bead = serde_json::from_str(json).unwrap();
-        assert_eq!(bead.design_doc, Some("path/to/design.md".to_string()));
-    }
-
-    #[test]
-    fn test_parse_bead_with_design_doc_field() {
-        // Test that original "design_doc" still works
-        let json = r#"{"id":"test-790","title":"With Design Doc","status":"open","design_doc":"path/to/design2.md"}"#;
-        let bead: Bead = serde_json::from_str(json).unwrap();
-        assert_eq!(bead.design_doc, Some("path/to/design2.md".to_string()));
+        assert_eq!(bead.design, Some("some design notes".to_string()));
+        assert_eq!(bead.notes, Some("some extra notes".to_string()));
     }
 
     #[test]
@@ -1343,7 +1337,8 @@ mod tests {
             comments: None,
             parent_id: None,
             children: None,
-            design_doc: None,
+            design: None,
+            notes: None,
             deps: None,
             relates_to: Some(vec!["bead-r1".to_string(), "bead-r2".to_string()]),
             dependencies: None,
