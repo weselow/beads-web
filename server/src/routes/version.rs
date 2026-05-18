@@ -21,7 +21,7 @@ const CACHE_TTL_SECS: u64 = 3600;
 
 /// Cached version check result.
 #[derive(Clone)]
-pub(crate) struct CachedCheck {
+pub struct CachedCheck {
     result: VersionCheckResponse,
     fetched_at: std::time::Instant,
 }
