@@ -162,24 +162,37 @@ pub async fn update_memory(Json(payload): Json<UpdateMemoryRequest>) -> impl Int
             .into_response();
     }
 
-    let result = if payload.key.is_empty() {
-        run_bd(&project_path, &["remember", &payload.content]).await
+    let stdout = if payload.key.is_empty() {
+        run_bd(&project_path, &["remember", &payload.content, "--json"]).await
     } else {
         run_bd(
             &project_path,
-            &["remember", &payload.content, "--key", &payload.key],
+            &["remember", &payload.content, "--key", &payload.key, "--json"],
         )
         .await
     };
 
-    if let Err((code, msg)) = result {
-        return (code, Json(serde_json::json!({ "error": msg }))).into_response();
-    }
+    let stdout = match stdout {
+        Ok(s) => s,
+        Err((code, msg)) => {
+            return (code, Json(serde_json::json!({ "error": msg }))).into_response();
+        }
+    };
+
+    // Parse the --json response to extract the bd-assigned key.
+    // Response shape: {"action":"remembered","key":"<key>","schema_version":1,"value":"<content>"}
+    let returned_key = serde_json::from_str::<serde_json::Value>(stdout.trim())
+        .ok()
+        .and_then(|v| v.get("key").and_then(|k| k.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            tracing::warn!("bd --json response missing 'key' field; falling back to payload key");
+            payload.key.clone()
+        });
 
     (
         StatusCode::OK,
         Json(MemoryEntry {
-            key: payload.key,
+            key: returned_key,
             content: payload.content,
         }),
     )

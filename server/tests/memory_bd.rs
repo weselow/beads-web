@@ -178,6 +178,22 @@ async fn test_memory_bd_round_trip() {
     let entries: Vec<serde_json::Value> = resp.json().await.unwrap();
     assert!(entries.is_empty(), "expected empty after delete, got: {entries:?}");
 
+    // -- Auto-gen key: PUT with empty key must return a non-empty bd-generated key --
+    let resp = client
+        .put(format!("{}/api/memory", base))
+        .json(&serde_json::json!({
+            "path": &tmp_str,
+            "key": "",
+            "content": "auto generated key test"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "auto-gen PUT should return 200");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let auto_key = body["key"].as_str().unwrap_or("");
+    assert!(!auto_key.is_empty(), "auto-gen key must be non-empty, got: {body:?}");
+
     // 5. Cleanup
     let _ = std::fs::remove_dir_all(&tmp);
 }
