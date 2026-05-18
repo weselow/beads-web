@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import remarkBreaks from "remark-breaks";
 
 import "highlight.js/styles/github-dark.css";
 
@@ -18,7 +19,9 @@ const PROSE_CLASSES =
 export function MarkdownBody({ children }: { children: string }) {
   return (
     <div className={PROSE_CLASSES}>
-      <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkBreaks]} rehypePlugins={[rehypeHighlight]}>
+        {children}
+      </ReactMarkdown>
     </div>
   );
 }
