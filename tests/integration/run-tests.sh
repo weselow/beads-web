@@ -651,6 +651,83 @@ else:
     pass "$name"
 }
 
+# Test 21: Memory round-trip — PUT (create), GET, PUT (update), DELETE
+test_21_memory_round_trip() {
+    local name="Memory round-trip via /api/memory"
+
+    # PUT create
+    local s
+    s=$(curl -s -o /tmp/t21a.json -w "%{http_code}" \
+        -X PUT "${BASE_URL}/api/memory" \
+        -H "Content-Type: application/json" \
+        -d "{\"path\":\"${PROJECT_DIR}\",\"key\":\"int-test\",\"content\":\"hello\"}")
+    if [[ "$s" != "200" ]]; then
+        fail "$name" "PUT create expected 200, got $s"
+        return
+    fi
+
+    # GET — entry appears with content "hello"
+    s=$(curl -s -o /tmp/t21b.json -w "%{http_code}" "${BASE_URL}/api/memory?path=${PROJECT_DIR}")
+    if [[ "$s" != "200" ]]; then
+        fail "$name" "GET expected 200, got $s"
+        return
+    fi
+    if ! python3 -c "
+import json,sys
+d = json.load(open('/tmp/t21b.json'))
+e = next((x for x in d if x.get('key')=='int-test'), None)
+if not e or e.get('content') != 'hello': sys.exit(1)
+" 2>/dev/null; then
+        fail "$name" "create not visible in list"
+        return
+    fi
+
+    # PUT update — same key, new content
+    s=$(curl -s -o /tmp/t21c.json -w "%{http_code}" \
+        -X PUT "${BASE_URL}/api/memory" \
+        -H "Content-Type: application/json" \
+        -d "{\"path\":\"${PROJECT_DIR}\",\"key\":\"int-test\",\"content\":\"updated\"}")
+    if [[ "$s" != "200" ]]; then
+        fail "$name" "PUT update expected 200, got $s"
+        return
+    fi
+
+    # GET — content reflects update
+    curl -s -o /tmp/t21d.json "${BASE_URL}/api/memory?path=${PROJECT_DIR}"
+    if ! python3 -c "
+import json,sys
+d = json.load(open('/tmp/t21d.json'))
+e = next((x for x in d if x.get('key')=='int-test'), None)
+if not e or e.get('content') != 'updated': sys.exit(1)
+" 2>/dev/null; then
+        fail "$name" "update not reflected in list"
+        return
+    fi
+
+    # DELETE
+    s=$(curl -s -o /tmp/t21e.json -w "%{http_code}" \
+        -X DELETE "${BASE_URL}/api/memory" \
+        -H "Content-Type: application/json" \
+        -d "{\"path\":\"${PROJECT_DIR}\",\"key\":\"int-test\"}")
+    if [[ "$s" != "200" ]]; then
+        fail "$name" "DELETE expected 200, got $s"
+        return
+    fi
+
+    # GET — entry gone
+    curl -s -o /tmp/t21f.json "${BASE_URL}/api/memory?path=${PROJECT_DIR}"
+    if ! python3 -c "
+import json,sys
+d = json.load(open('/tmp/t21f.json'))
+if any(x.get('key')=='int-test' for x in d): sys.exit(1)
+" 2>/dev/null; then
+        fail "$name" "entry still visible after delete"
+        return
+    fi
+
+    pass "$name"
+}
+
 # ── Run all tests ─────────────────────────────────────────────────────────────
 
 test_1_get_beads
@@ -673,6 +750,7 @@ test_17_archive_project
 test_18_archived_hidden
 test_19_unarchive_project
 test_20_epic_with_children
+test_21_memory_round_trip
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

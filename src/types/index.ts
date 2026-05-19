@@ -326,39 +326,11 @@ export interface PRFilesResponse {
 // ============================================================================
 
 /**
- * Memory entry type: learned insight or investigation context
- */
-export type MemoryType = "learned" | "investigation";
-
-/**
- * A single knowledge base entry from knowledge.jsonl
+ * A single memory entry from bd memories
  */
 export interface MemoryEntry {
   key: string;
-  type: MemoryType;
   content: string;
-  source: string;
-  tags: string[];
-  ts: number;
-  bead: string;
-}
-
-/**
- * Aggregate stats for the knowledge base
- */
-export interface MemoryStats {
-  total: number;
-  learned: number;
-  investigation: number;
-  archived: number;
-}
-
-/**
- * Response from GET /api/memory
- */
-export interface MemoryResponse {
-  entries: MemoryEntry[];
-  stats: MemoryStats;
 }
 
 // ============================================================================

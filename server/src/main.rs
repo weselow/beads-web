@@ -187,7 +187,6 @@ async fn main() {
                 .put(routes::memory::update_memory)
                 .delete(routes::memory::delete_memory),
         )
-        .route("/api/memory/stats", get(routes::memory::memory_stats))
         .route("/api/watch/beads", get(routes::watch_beads))
         .route("/api/version/check", get(routes::version::version_check))
         .route("/api/update", post(routes::version::perform_update))
