@@ -16,8 +16,8 @@ import {
 import { BeadPRSection } from "@/components/bead-pr-section";
 import { CopyableText } from "@/components/copyable-text";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
-import { DesignDocViewer } from "@/components/design-doc-viewer";
 import { EditableField } from "@/components/editable-field";
+import { MarkdownBody } from "@/components/markdown-body";
 import { SubtaskList } from "@/components/subtask-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,9 +124,7 @@ export function BeadDetail({
     }
   }, [bead.id, projectPath, isDolt, onUpdate]);
 
-  const [isDesignDocFullScreen, setIsDesignDocFullScreen] = useState(false);
   const [isAddSubtaskOpen, setIsAddSubtaskOpen] = useState(false);
-  const hasDesignDoc = !!bead.design_doc;
   const hasWorktree = worktreeStatus?.exists ?? false;
   const isEpic = bead.children && bead.children.length > 0;
 
@@ -179,18 +177,6 @@ export function BeadDetail({
     return () => clearInterval(intervalId);
   }, [open, isEpic, projectPath, childTasks, fetchChildPRStatuses]);
 
-  const handleFullScreenChange = useCallback((isFullScreen: boolean) => {
-    setIsDesignDocFullScreen(isFullScreen);
-  }, []);
-
-  // Override Radix's scroll lock when MorphingDialog is fullscreen
-  useEffect(() => {
-    if (isDesignDocFullScreen) {
-      document.body.style.pointerEvents = '';
-      document.body.style.overflow = 'hidden';
-    }
-  }, [isDesignDocFullScreen]);
-
   return (
     <>
       {/* Overlay */}
@@ -204,8 +190,7 @@ export function BeadDetail({
       <div
         className={cn(
           "fixed inset-y-0 right-0 z-50 w-full sm:max-w-lg md:max-w-xl overflow-y-auto bg-surface-base border-l border-b-default p-6 shadow-lg transition-transform duration-300 ease-in-out",
-          open ? "translate-x-0" : "translate-x-full",
-          isDesignDocFullScreen && "invisible"
+          open ? "translate-x-0" : "translate-x-full"
         )}
       >
           {/* Header with Back button */}
@@ -290,6 +275,13 @@ export function BeadDetail({
             </span>
           </div>
 
+          {/* Close reason — shown only for closed beads */}
+          {bead.status === "closed" && bead.close_reason && (
+            <div className="mt-2 text-center text-xs text-t-muted">
+              Closed: <span className="text-t-tertiary">{bead.close_reason}</span>
+            </div>
+          )}
+
           {/* Worktree & PR Section */}
           {hasWorktree && projectPath && (
             <BeadPRSection
@@ -306,16 +298,41 @@ export function BeadDetail({
             <div className="mt-6">
               <h3 className="text-sm font-semibold mb-2 text-t-secondary">Description</h3>
               <div className="h-px bg-b-default mb-3" />
-              <div className="text-sm text-t-tertiary leading-relaxed whitespace-pre-wrap">
+              <div className="text-sm text-t-tertiary leading-relaxed">
                 <EditableField
                   value={bead.description ?? ""}
                   onSave={handleSaveDescription}
                   disabled={isReadOnly}
                   multiline
                   placeholder="Add a description…"
+                  renderValue={(v) => <MarkdownBody>{v}</MarkdownBody>}
                 />
               </div>
             </div>
+          )}
+
+          {/* Design (collapsed by default; rendered as Markdown) */}
+          {bead.design && (
+            <details className="mt-6 group">
+              <summary className="text-sm font-semibold text-t-secondary cursor-pointer list-none flex items-center gap-1.5 hover:text-t-primary">
+                <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+                Design
+              </summary>
+              <div className="h-px bg-b-default my-2" />
+              <MarkdownBody>{bead.design}</MarkdownBody>
+            </details>
+          )}
+
+          {/* Notes (collapsed by default; rendered as Markdown) */}
+          {bead.notes && (
+            <details className="mt-6 group">
+              <summary className="text-sm font-semibold text-t-secondary cursor-pointer list-none flex items-center gap-1.5 hover:text-t-primary">
+                <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+                Notes
+              </summary>
+              <div className="h-px bg-b-default my-2" />
+              <MarkdownBody>{bead.notes}</MarkdownBody>
+            </details>
           )}
 
           {/* Related Tasks */}
@@ -391,19 +408,6 @@ export function BeadDetail({
                   childPRStatuses={childPRStatuses}
                 />
               </div>
-            </div>
-          )}
-
-          {/* Design Document */}
-          {hasDesignDoc && projectPath && (
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold mb-3 text-t-secondary">Design Document</h3>
-              <DesignDocViewer
-                designDocPath={bead.design_doc!}
-                epicId={formatBeadId(bead.id)}
-                projectPath={projectPath}
-                onFullScreenChange={handleFullScreenChange}
-              />
             </div>
           )}
 

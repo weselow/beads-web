@@ -27,15 +27,6 @@ pub struct FsExistsParams {
     pub path: String,
 }
 
-/// Query parameters for the read file endpoint.
-#[derive(Debug, Deserialize)]
-pub struct FsReadParams {
-    /// The file path to read (relative, e.g., ".designs/epic.md")
-    pub path: String,
-    /// The project path (absolute directory path)
-    pub project_path: String,
-}
-
 /// Request body for opening a path in an external application.
 #[derive(Debug, Deserialize)]
 pub struct OpenExternalRequest {
@@ -155,112 +146,6 @@ pub async fn path_exists(Query(params): Query<FsExistsParams>) -> impl IntoRespo
     let exists = path.exists();
 
     (StatusCode::OK, Json(serde_json::json!({ "exists": exists })))
-}
-
-/// GET /api/fs/read?path=.designs/{EPIC_ID}.md&project_path=/absolute/path
-///
-/// Reads a design document file from the .designs directory.
-///
-/// # Security constraints:
-/// - Max file size: 100KB
-/// - Only .md extension allowed
-/// - Path must be within project directory
-/// - Path must start with ".designs/"
-pub async fn read_file(Query(params): Query<FsReadParams>) -> impl IntoResponse {
-    // Security: Path must start with .designs/
-    if !params.path.starts_with(".designs/") {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "error": "Access denied: path must start with .designs/"
-            })),
-        );
-    }
-
-    // Parse relative path to validate extension
-    let relative_path = PathBuf::from(&params.path);
-
-    // Security: Only .md extension allowed
-    if relative_path.extension().and_then(|s| s.to_str()) != Some("md") {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "error": "Access denied: only .md files are allowed"
-            })),
-        );
-    }
-
-    // Join project path with relative design doc path to get absolute path
-    let project_root = PathBuf::from(&params.project_path);
-    let file_path = project_root.join(&params.path);
-
-    // Security: Validate absolute path is within allowed directories
-    if let Err(e) = validate_path_security(&file_path) {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": e })),
-        );
-    }
-
-    // Check if file exists
-    if !file_path.exists() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "File does not exist" })),
-        );
-    }
-
-    // Check if path is a file (not a directory)
-    if !file_path.is_file() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "Path is not a file" })),
-        );
-    }
-
-    // Security: Check file size (max 100KB)
-    let metadata = match std::fs::metadata(&file_path) {
-        Ok(m) => m,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": format!("Failed to read file metadata: {}", e)
-                })),
-            );
-        }
-    };
-
-    const MAX_FILE_SIZE: u64 = 100 * 1024; // 100KB
-    if metadata.len() > MAX_FILE_SIZE {
-        return (
-            StatusCode::PAYLOAD_TOO_LARGE,
-            Json(serde_json::json!({
-                "error": format!("File too large: {} bytes (max {} bytes)", metadata.len(), MAX_FILE_SIZE)
-            })),
-        );
-    }
-
-    // Read file contents
-    let contents = match std::fs::read_to_string(&file_path) {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": format!("Failed to read file: {}", e)
-                })),
-            );
-        }
-    };
-
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "content": contents,
-            "path": params.path
-        })),
-    )
 }
 
 /// POST /api/fs/open-external

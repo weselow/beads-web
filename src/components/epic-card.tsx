@@ -6,7 +6,6 @@ import { CheckCircle2, ChevronDown, ChevronRight, Layers, Loader2, MessageSquare
 
 import { CopyableText } from "@/components/copyable-text";
 import { DependencyBadge } from "@/components/dependency-badge";
-import { DesignDocPreview } from "@/components/design-doc-preview";
 import { SubtaskList, ChildPRStatus } from "@/components/subtask-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,7 +77,6 @@ export function EpicCard({
   onUpdate
 }: EpicCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isDesignPreviewExpanded, setIsDesignPreviewExpanded] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
   // PR status for child tasks
@@ -157,7 +155,6 @@ export function EpicCard({
     : 0;
 
   const commentCount = (epic.comments ?? []).length;
-  const hasDesignDoc = !!epic.design_doc;
 
   // Show Close Epic button when all children are complete and epic is in review
   const canCloseEpic = progressPercentage === 100 && epic.status === 'inreview';
@@ -255,24 +252,6 @@ export function EpicCard({
     </div>
   );
 
-  // Shared design doc section
-  const designSection = hasDesignDoc && projectPath && (
-    <div className="pt-2 border-t border-b-strong">
-      <button
-        onClick={(e) => { e.stopPropagation(); setIsDesignPreviewExpanded(!isDesignPreviewExpanded); }}
-        aria-expanded={isDesignPreviewExpanded}
-        aria-label={`${isDesignPreviewExpanded ? 'Collapse' : 'Expand'} design preview`}
-        className="flex items-center gap-1 text-xs font-semibold text-epic hover:text-epic/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-epic rounded mb-2"
-      >
-        {isDesignPreviewExpanded ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
-        Design Preview
-      </button>
-      {isDesignPreviewExpanded && (
-        <DesignDocPreview designDocPath={epic.design_doc!} epicId={epic.id} projectPath={projectPath} />
-      )}
-    </div>
-  );
-
   // ─── Layout: compact-row (Linear Minimal) ───
   if (layout === 'compact-row') {
     return (
@@ -342,7 +321,6 @@ export function EpicCard({
 
           {progressSection}
           {closeButton}
-          {designSection}
           {childrenSection}
         </div>
       </div>
@@ -419,7 +397,6 @@ export function EpicCard({
         </div>
 
         {closeButton}
-        {designSection}
         {childrenSection}
 
         {commentCount > 0 && (

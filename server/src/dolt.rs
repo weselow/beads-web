@@ -104,6 +104,7 @@ impl DoltManager {
     }
 
     /// Creates a new bead in a Dolt database and commits the change.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_bead(
         &self,
         db_name: &str,
@@ -121,15 +122,13 @@ impl DoltManager {
 
         // First, query the table schema to find all NOT NULL columns without defaults
         // so we can provide empty values for them
-        let schema_query = format!(
-            "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
+        let schema_query = "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
              WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'issues' \
              AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL \
              AND COLUMN_NAME NOT IN ('id', 'title', 'description', 'status', 'priority', \
-             'issue_type', 'owner', 'created_at', 'updated_at')"
-        );
+             'issue_type', 'owner', 'created_at', 'updated_at')";
         let extra_cols: Vec<String> = conn.exec_map(
-            &schema_query,
+            schema_query,
             mysql_async::params! { "db" => db_name },
             |col_name: String| col_name,
         ).await.unwrap_or_default();
@@ -376,7 +375,7 @@ fn get_str(row: &Row, col: &str) -> String {
 /// Queries issues from a Dolt database.
 async fn query_issues(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Vec<Bead>, DoltError> {
     let query = format!(
-        "SELECT id, title, description, `design`, status, priority, issue_type, \
+        "SELECT id, title, description, `design`, notes, status, priority, issue_type, \
          owner, assignee, \
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at, \
          created_by, \
@@ -402,7 +401,8 @@ async fn query_issues(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Vec
         updated_at: get_opt_str(row, "updated_at"),
         closed_at: get_opt_str(row, "closed_at"),
         close_reason: get_opt_str(row, "close_reason"),
-        design_doc: get_opt_str(row, "design"),
+        design: get_opt_str(row, "design"),
+        notes: get_opt_str(row, "notes"),
         parent_id: None, children: None, deps: None,
         relates_to: None, comments: None, dependencies: None,
     }).collect())

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { formatDistanceToNow } from "date-fns";
 
+import { MarkdownBody } from "@/components/markdown-body";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addComment } from "@/lib/cli";
@@ -47,10 +48,8 @@ function CommentCard({ comment }: { comment: Comment }) {
         </span>
       </div>
 
-      {/* Comment text */}
-      <p className="text-sm text-t-secondary leading-relaxed whitespace-pre-wrap">
-        {comment.text}
-      </p>
+      {/* Comment text (Markdown) */}
+      <MarkdownBody>{comment.text}</MarkdownBody>
     </div>
   );
 }
