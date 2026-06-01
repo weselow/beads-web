@@ -565,7 +565,8 @@ pub async fn read_beads(
         // Tier 2: Try bd CLI
         match read_beads_from_cli(&project_path, params.updated_after.as_deref()).await {
             Ok(b) => {
-                tracing::info!("Read {} beads from bd CLI for {}", b.len(), path);
+                let mode = if params.updated_after.is_some() { "incremental" } else { "full" };
+                tracing::info!("Read {} beads from bd CLI for {} ({})", b.len(), path, mode);
                 break 'fallback (b, "cli");
             }
             Err(cli_err) => {
