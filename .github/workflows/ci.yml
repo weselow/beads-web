@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix:
+    name: Nix package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Enable Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build flake package and refresh fixed-output hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          build() {
+            local log="$1"
+            set +e
+            nix build .#packages.x86_64-linux.default \
+              --no-update-lock-file \
+              --no-link \
+              --print-build-logs \
+              2>&1 | tee "$log"
+            local status="${PIPESTATUS[0]}"
+            set -e
+            return "$status"
+          }
+
+          log="$(mktemp)"
+          if build "$log"; then
+            exit 0
+          fi
+
+          got_hash="$(
+            sed -nE 's/^[[:space:]]*got:[[:space:]]*(sha256-[A-Za-z0-9+/=]+).*/\1/p' "$log" | tail -1
+          )"
+
+          if [ -z "$got_hash" ]; then
+            {
+              echo "## Nix build failed"
+              echo
+              echo "No fixed-output hash hint was found in the build log."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if ! grep -q 'npmDepsHash = "' flake.nix; then
+            echo "Found Nix hash mismatch, but could not find npmDepsHash in flake.nix" >&2
+            exit 1
+          fi
+
+          sed -i -E "s#npmDepsHash = \"sha256-[^\"]+\";#npmDepsHash = \"$got_hash\";#" flake.nix
+
+          {
+            echo "## Refreshed Nix fixed-output hash"
+            echo
+            echo "Updated \`npmDepsHash\` to:"
+            echo
+            echo '```text'
+            echo "$got_hash"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          rebuild_log="$(mktemp)"
+          build "$rebuild_log"
+
+          if git diff --quiet -- flake.nix; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add flake.nix
+          git commit -m "Update Nix dependency hashes"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Check lockfiles did not drift
+        run: git diff --exit-code -- flake.lock package-lock.json server/Cargo.lock
