@@ -13,6 +13,14 @@ import {
 } from "@/hooks/use-pr-settings";
 import type { MergeMethod } from "@/lib/api";
 import { getTags, createTag, deleteTag, type Tag } from "@/lib/db";
+import {
+  applyFontSize,
+  clampFontSize,
+  DEFAULT_FONT_SIZE,
+  FONT_SIZE_STORAGE_KEY,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
+} from "@/lib/font-size";
 
 /** Merge method options for the radio group */
 const MERGE_METHOD_OPTIONS: { value: MergeMethod; label: string }[] = [
@@ -27,6 +35,7 @@ export default function SettingsPage() {
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#3b82f6");
   const [isLoading, setIsLoading] = useState(true);
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
 
   // PR settings hook
   const { settings: prSettings, isLoaded: prSettingsLoaded, updateSetting } = usePRSettings();
@@ -43,6 +52,27 @@ export default function SettingsPage() {
     }
     loadTags();
   }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    const parsed = stored ? Number(stored) : DEFAULT_FONT_SIZE;
+    const nextFontSize = clampFontSize(parsed);
+    setFontSize(nextFontSize);
+    applyFontSize(nextFontSize);
+  }, []);
+
+  const handleFontSizeChange = (value: number) => {
+    const nextFontSize = clampFontSize(value);
+    setFontSize(nextFontSize);
+    localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(nextFontSize));
+    applyFontSize(nextFontSize);
+  };
+
+  const handleResetFontSize = () => {
+    setFontSize(DEFAULT_FONT_SIZE);
+    localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+    applyFontSize(DEFAULT_FONT_SIZE);
+  };
 
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
@@ -104,6 +134,54 @@ export default function SettingsPage() {
           <h2 className="mb-4 text-lg font-medium text-t-primary">Theme</h2>
           <div className="rounded-lg border border-b-default bg-surface-raised/50 p-4">
             <ThemeSwitcher />
+          </div>
+        </section>
+
+        {/* Typography Section */}
+        <section className="mb-8">
+          <h2 className="mb-4 text-lg font-medium text-t-primary">Typography</h2>
+          <div className="rounded-lg border border-b-default bg-surface-raised/50 p-4">
+            <label
+              htmlFor="font-size"
+              className="block text-sm font-medium text-t-secondary"
+            >
+              Font size
+            </label>
+            <div className="mt-2 flex items-center gap-3">
+              <input
+                id="font-size"
+                type="range"
+                min={MIN_FONT_SIZE}
+                max={MAX_FONT_SIZE}
+                value={fontSize}
+                onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+                className="h-2 flex-1 accent-t-primary"
+                aria-describedby="font-size-hint"
+              />
+              <Input
+                type="number"
+                min={MIN_FONT_SIZE}
+                max={MAX_FONT_SIZE}
+                value={fontSize}
+                onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+                className="w-20 border-b-strong bg-surface-overlay text-t-primary tabular-nums"
+                aria-label="Font size in pixels"
+              />
+              <span className="text-sm text-t-tertiary">px</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p id="font-size-hint" className="text-xs text-t-muted">
+                {MIN_FONT_SIZE}-{MAX_FONT_SIZE}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-b-strong bg-transparent text-t-tertiary hover:bg-surface-overlay hover:text-t-primary"
+                onClick={handleResetFontSize}
+              >
+                Reset
+              </Button>
+            </div>
           </div>
         </section>
 

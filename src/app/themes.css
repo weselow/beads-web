@@ -11,6 +11,10 @@
  *   "soft-light"        - Soft shadows, pastel status colors
  *   "notion-warm"       - Warm neutrals, Notion-style property tags
  *   "github-clean"      - GitHub Projects-inspired, clean borders
+ *   "catppuccin-latte"  - Official light Catppuccin palette
+ *   "catppuccin-frappe" - Official muted dark Catppuccin palette
+ *   "catppuccin-macchiato" - Official medium-contrast Catppuccin palette
+ *   "catppuccin-mocha"  - Official original dark Catppuccin palette
  */
 
 /* ──────────────────────────────────────────────
@@ -519,6 +523,394 @@ html[data-theme="github-clean"] {
   --column-bg-alpha: 0;
 }
 
+/* --------------------------------------------------
+ * THEME 7: Catppuccin Latte
+ * Official light Catppuccin palette
+ * -------------------------------------------------- */
+html[data-theme="catppuccin-latte"] {
+  /* shadcn overrides for light mode */
+  --background: 220 23% 95%;
+  --foreground: 234 16% 35%;
+  --card: 220 22% 92%;
+  --card-foreground: 234 16% 35%;
+  --popover: 220 22% 92%;
+  --popover-foreground: 234 16% 35%;
+  --primary: 220 91% 54%;
+  --primary-foreground: 220 23% 95%;
+  --secondary: 223 16% 83%;
+  --secondary-foreground: 234 16% 35%;
+  --muted: 223 16% 83%;
+  --muted-foreground: 233 10% 47%;
+  --accent: 231 97% 72%;
+  --accent-foreground: 234 16% 35%;
+  --destructive: 347 87% 44%;
+  --destructive-foreground: 220 23% 95%;
+  --border: 225 14% 77%;
+  --input: 225 14% 77%;
+  --ring: 220 91% 54%;
+
+  /* Surface */
+  --surface-base: 220 23% 95%;
+  --surface-raised: 220 22% 92%;
+  --surface-overlay: 223 16% 83%;
+  --surface-inset: 225 14% 77%;
+
+  /* Text */
+  --text-primary: 234 16% 35%;
+  --text-secondary: 233 13% 41%;
+  --text-tertiary: 233 10% 47%;
+  --text-muted: 231 10% 59%;
+  --text-faint: 228 11% 65%;
+
+  /* Border */
+  --border-default: 225 14% 77%;
+  --border-subtle: 223 16% 83%;
+  --border-strong: 227 12% 71%;
+
+  /* Status */
+  --status-open: 220 91% 54%;
+  --status-progress: 35 77% 49%;
+  --status-review: 266 85% 58%;
+  --status-closed: 109 58% 40%;
+
+  /* Semantic */
+  --success: 109 58% 40%;
+  --warning: 35 77% 49%;
+  --danger: 347 87% 44%;
+  --info: 220 91% 54%;
+
+  /* Feature */
+  --epic: 266 85% 58%;
+  --blocked-accent: 22 99% 52%;
+
+  /* Priority */
+  --priority-p0: 347 87% 44%;
+  --priority-p1: 22 99% 52%;
+  --priority-p2: 232 10% 53%;
+  --priority-p3: 231 10% 59%;
+  --priority-p4: 228 11% 65%;
+
+  /* Progress */
+  --progress-100: 109 58% 40%;
+  --progress-75: 109 58% 40%;
+  --progress-50: 220 91% 54%;
+  --progress-25: 35 77% 49%;
+  --progress-0: 266 85% 58%;
+
+  /* Shape */
+  --radius-card: 0.5rem;
+  --radius-column: 0.75rem;
+  --radius-badge: 0.375rem;
+  --border-w: 1px;
+  --column-gap: 1rem;
+
+  /* Typography */
+  --font-body: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-heading: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --ls-title: -0.01em;
+  --ls-label: 0em;
+
+  /* Effects */
+  --card-shadow: none;
+  --card-hover-shadow: 0 6px 16px rgba(76, 79, 105, 0.10);
+  --card-blur: 0;
+  --card-hover-y: -1px;
+  --column-blur: 0;
+  --column-bg-alpha: 1;
+}
+
+/* --------------------------------------------------
+ * THEME 8: Catppuccin Frappe
+ * Official muted dark Catppuccin palette
+ * -------------------------------------------------- */
+html[data-theme="catppuccin-frappe"] {
+  /* shadcn overrides for dark mode */
+  --background: 229 19% 23%;
+  --foreground: 227 70% 87%;
+  --card: 230 16% 30%;
+  --card-foreground: 227 70% 87%;
+  --popover: 230 16% 30%;
+  --popover-foreground: 227 70% 87%;
+  --primary: 222 74% 74%;
+  --primary-foreground: 229 19% 23%;
+  --secondary: 227 15% 37%;
+  --secondary-foreground: 227 70% 87%;
+  --muted: 227 15% 37%;
+  --muted-foreground: 228 29% 73%;
+  --accent: 277 59% 76%;
+  --accent-foreground: 229 19% 23%;
+  --destructive: 359 68% 71%;
+  --destructive-foreground: 229 19% 23%;
+  --border: 227 15% 37%;
+  --input: 228 13% 44%;
+  --ring: 222 74% 74%;
+
+  /* Surface */
+  --surface-base: 229 19% 23%;
+  --surface-raised: 230 16% 30%;
+  --surface-overlay: 227 15% 37%;
+  --surface-inset: 228 13% 44%;
+
+  /* Text */
+  --text-primary: 227 70% 87%;
+  --text-secondary: 227 44% 80%;
+  --text-tertiary: 228 29% 73%;
+  --text-muted: 227 17% 58%;
+  --text-faint: 229 13% 52%;
+
+  /* Border */
+  --border-default: 227 15% 37%;
+  --border-subtle: 230 16% 30%;
+  --border-strong: 228 13% 44%;
+
+  /* Status */
+  --status-open: 222 74% 74%;
+  --status-progress: 40 62% 73%;
+  --status-review: 277 59% 76%;
+  --status-closed: 96 44% 68%;
+
+  /* Semantic */
+  --success: 96 44% 68%;
+  --warning: 40 62% 73%;
+  --danger: 359 68% 71%;
+  --info: 199 55% 69%;
+
+  /* Feature */
+  --epic: 277 59% 76%;
+  --blocked-accent: 20 79% 70%;
+
+  /* Priority */
+  --priority-p0: 359 68% 71%;
+  --priority-p1: 20 79% 70%;
+  --priority-p2: 228 22% 66%;
+  --priority-p3: 227 17% 58%;
+  --priority-p4: 229 13% 52%;
+
+  /* Progress */
+  --progress-100: 96 44% 68%;
+  --progress-75: 96 44% 68%;
+  --progress-50: 222 74% 74%;
+  --progress-25: 40 62% 73%;
+  --progress-0: 277 59% 76%;
+
+  /* Shape */
+  --radius-card: 0.5rem;
+  --radius-column: 0.75rem;
+  --radius-badge: 0.375rem;
+  --border-w: 1px;
+  --column-gap: 1rem;
+
+  /* Typography */
+  --font-body: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-heading: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --ls-title: -0.01em;
+  --ls-label: 0em;
+
+  /* Effects */
+  --card-shadow: none;
+  --card-hover-shadow: 0 6px 16px rgba(35, 38, 52, 0.28);
+  --card-blur: 0;
+  --card-hover-y: -1px;
+  --column-blur: 0;
+  --column-bg-alpha: 1;
+}
+
+/* --------------------------------------------------
+ * THEME 9: Catppuccin Macchiato
+ * Official medium-contrast Catppuccin palette
+ * -------------------------------------------------- */
+html[data-theme="catppuccin-macchiato"] {
+  /* shadcn overrides for dark mode */
+  --background: 232 23% 18%;
+  --foreground: 227 68% 88%;
+  --card: 230 19% 26%;
+  --card-foreground: 227 68% 88%;
+  --popover: 230 19% 26%;
+  --popover-foreground: 227 68% 88%;
+  --primary: 220 83% 75%;
+  --primary-foreground: 232 23% 18%;
+  --secondary: 231 16% 34%;
+  --secondary-foreground: 227 68% 88%;
+  --muted: 231 16% 34%;
+  --muted-foreground: 227 27% 72%;
+  --accent: 267 83% 80%;
+  --accent-foreground: 232 23% 18%;
+  --destructive: 351 74% 73%;
+  --destructive-foreground: 232 23% 18%;
+  --border: 231 16% 34%;
+  --input: 230 14% 41%;
+  --ring: 220 83% 75%;
+
+  /* Surface */
+  --surface-base: 232 23% 18%;
+  --surface-raised: 230 19% 26%;
+  --surface-overlay: 231 16% 34%;
+  --surface-inset: 230 14% 41%;
+
+  /* Text */
+  --text-primary: 227 68% 88%;
+  --text-secondary: 228 39% 80%;
+  --text-tertiary: 227 27% 72%;
+  --text-muted: 228 15% 57%;
+  --text-faint: 230 12% 49%;
+
+  /* Border */
+  --border-default: 231 16% 34%;
+  --border-subtle: 230 19% 26%;
+  --border-strong: 230 14% 41%;
+
+  /* Status */
+  --status-open: 220 83% 75%;
+  --status-progress: 40 70% 78%;
+  --status-review: 267 83% 80%;
+  --status-closed: 105 48% 72%;
+
+  /* Semantic */
+  --success: 105 48% 72%;
+  --warning: 40 70% 78%;
+  --danger: 351 74% 73%;
+  --info: 199 66% 69%;
+
+  /* Feature */
+  --epic: 267 83% 80%;
+  --blocked-accent: 21 86% 73%;
+
+  /* Priority */
+  --priority-p0: 351 74% 73%;
+  --priority-p1: 21 86% 73%;
+  --priority-p2: 228 20% 65%;
+  --priority-p3: 228 15% 57%;
+  --priority-p4: 230 12% 49%;
+
+  /* Progress */
+  --progress-100: 105 48% 72%;
+  --progress-75: 105 48% 72%;
+  --progress-50: 220 83% 75%;
+  --progress-25: 40 70% 78%;
+  --progress-0: 267 83% 80%;
+
+  /* Shape */
+  --radius-card: 0.5rem;
+  --radius-column: 0.75rem;
+  --radius-badge: 0.375rem;
+  --border-w: 1px;
+  --column-gap: 1rem;
+
+  /* Typography */
+  --font-body: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-heading: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --ls-title: -0.01em;
+  --ls-label: 0em;
+
+  /* Effects */
+  --card-shadow: none;
+  --card-hover-shadow: 0 6px 16px rgba(24, 25, 38, 0.30);
+  --card-blur: 0;
+  --card-hover-y: -1px;
+  --column-blur: 0;
+  --column-bg-alpha: 1;
+}
+
+/* --------------------------------------------------
+ * THEME 10: Catppuccin Mocha
+ * Official original dark Catppuccin palette
+ * -------------------------------------------------- */
+html[data-theme="catppuccin-mocha"] {
+  /* shadcn overrides for dark mode */
+  --background: 240 21% 15%;
+  --foreground: 226 64% 88%;
+  --card: 237 16% 23%;
+  --card-foreground: 226 64% 88%;
+  --popover: 237 16% 23%;
+  --popover-foreground: 226 64% 88%;
+  --primary: 217 92% 76%;
+  --primary-foreground: 240 21% 15%;
+  --secondary: 234 13% 31%;
+  --secondary-foreground: 226 64% 88%;
+  --muted: 234 13% 31%;
+  --muted-foreground: 228 24% 72%;
+  --accent: 267 84% 81%;
+  --accent-foreground: 240 21% 15%;
+  --destructive: 343 81% 75%;
+  --destructive-foreground: 240 21% 15%;
+  --border: 234 13% 31%;
+  --input: 233 12% 39%;
+  --ring: 217 92% 76%;
+
+  /* Surface */
+  --surface-base: 240 21% 15%;
+  --surface-raised: 237 16% 23%;
+  --surface-overlay: 234 13% 31%;
+  --surface-inset: 233 12% 39%;
+
+  /* Text */
+  --text-primary: 226 64% 88%;
+  --text-secondary: 227 35% 80%;
+  --text-tertiary: 228 24% 72%;
+  --text-muted: 230 13% 55%;
+  --text-faint: 231 11% 47%;
+
+  /* Border */
+  --border-default: 234 13% 31%;
+  --border-subtle: 237 16% 23%;
+  --border-strong: 233 12% 39%;
+
+  /* Status */
+  --status-open: 217 92% 76%;
+  --status-progress: 41 86% 83%;
+  --status-review: 267 84% 81%;
+  --status-closed: 115 54% 76%;
+
+  /* Semantic */
+  --success: 115 54% 76%;
+  --warning: 41 86% 83%;
+  --danger: 343 81% 75%;
+  --info: 199 76% 69%;
+
+  /* Feature */
+  --epic: 267 84% 81%;
+  --blocked-accent: 23 92% 75%;
+
+  /* Priority */
+  --priority-p0: 343 81% 75%;
+  --priority-p1: 23 92% 75%;
+  --priority-p2: 228 17% 64%;
+  --priority-p3: 230 13% 55%;
+  --priority-p4: 231 11% 47%;
+
+  /* Progress */
+  --progress-100: 115 54% 76%;
+  --progress-75: 115 54% 76%;
+  --progress-50: 217 92% 76%;
+  --progress-25: 41 86% 83%;
+  --progress-0: 267 84% 81%;
+
+  /* Shape */
+  --radius-card: 0.5rem;
+  --radius-column: 0.75rem;
+  --radius-badge: 0.375rem;
+  --border-w: 1px;
+  --column-gap: 1rem;
+
+  /* Typography */
+  --font-body: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-heading: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --ls-title: -0.01em;
+  --ls-label: 0em;
+
+  /* Effects */
+  --card-shadow: none;
+  --card-hover-shadow: 0 6px 16px rgba(17, 17, 27, 0.34);
+  --card-blur: 0;
+  --card-hover-y: -1px;
+  --column-blur: 0;
+  --column-bg-alpha: 1;
+}
+
 /* ══════════════════════════════════════════════
  * THEME-SPECIFIC EFFECTS
  * Unique visual effects that go beyond CSS variables.
@@ -683,4 +1075,3 @@ html[data-theme="github-clean"] .theme-card:hover {
 html[data-theme="github-clean"] .theme-column {
   background: transparent;
 }
-

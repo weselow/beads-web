@@ -3,7 +3,7 @@
  * Shared functions for fetching and processing design documents
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3008';
+import { apiUrl } from '@/lib/api-base';
 
 /**
  * Fetch design doc content from the backend API
@@ -12,7 +12,7 @@ export async function fetchDesignDoc(path: string, projectPath: string): Promise
   const encodedPath = encodeURIComponent(path);
   const encodedProjectPath = encodeURIComponent(projectPath);
   const response = await fetch(
-    `${API_BASE}/api/fs/read?path=${encodedPath}&project_path=${encodedProjectPath}`
+    apiUrl(`/api/fs/read?path=${encodedPath}&project_path=${encodedProjectPath}`)
   );
   if (!response.ok) {
     throw new Error('Failed to fetch design doc: ' + response.statusText);

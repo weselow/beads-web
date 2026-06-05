@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="BeadsUI">
+  <defs>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="256" height="256" rx="28" fill="#000" />
+
+  <g
+    filter="url(#glow)"
+    fill="none"
+    stroke="#7de3ff"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <rect x="24" y="48" width="208" height="112" rx="12" stroke-width="11" />
+    <path d="M92 52v108M164 52v108" stroke-width="9" />
+    <path d="M34 160h58M108 160h56M180 160h42" stroke-width="9" />
+
+    <g stroke-width="10">
+      <rect x="42" y="76" width="38" height="38" rx="4" />
+      <rect x="68" y="105" width="38" height="38" rx="4" />
+      <rect x="45" y="134" width="38" height="38" rx="4" />
+    </g>
+
+    <g stroke-width="10">
+      <rect x="116" y="78" width="48" height="70" rx="8" />
+      <path d="M129 130h24M127 143h32" />
+    </g>
+
+    <g stroke-width="9">
+      <circle cx="184" cy="76" r="10" />
+      <circle cx="216" cy="76" r="10" />
+      <path d="M178 103h44" />
+      <path d="M178 132l10 10 20-22" />
+      <path d="M212 126h18" />
+      <path d="M178 156l10 10 20-22" />
+      <path d="M212 150h18" />
+    </g>
+  </g>
+</svg>

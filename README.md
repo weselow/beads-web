@@ -39,7 +39,7 @@ This fork has diverged significantly: 84 files changed, ~9500 lines added.
 <details>
 <summary>What changed (summary)</summary>
 
-- 7 visual themes with persistence and flash prevention
+- 11 visual themes with persistence and flash prevention
 - Inline editing for bead fields (click to edit title, description, notes)
 - Click-to-copy bead IDs
 - Dolt direct SQL integration (no filesystem needed)
@@ -62,7 +62,7 @@ Full changelog with rationale: [docs/changelog.md](docs/changelog.md)
 - **Epic support** — group tasks with visual progress bars, view subtasks
 - **GitOps** — create, view, and merge PRs from the board. CI status, merge conflicts, auto-close
 - **Memory panel** — browse, search, edit knowledge base entries
-- **7 themes** — Default Dark, Glassmorphism, Neo-Brutalist, Linear Minimal, Soft Light, Notion Warm, GitHub Clean
+- **11 themes** — Default Dark, Glassmorphism, Neo-Brutalist, Linear Minimal, Soft Light, Notion Warm, GitHub Clean, plus Catppuccin Latte, Frappe, Macchiato, and Mocha
 - **Dolt integration** — connect to Dolt databases directly, no filesystem path needed
 - **Real-time sync** — SSE file watcher for local projects, polling for Dolt
 
@@ -71,7 +71,7 @@ Full changelog with rationale: [docs/changelog.md](docs/changelog.md)
 Soft Light theme is shown in the main screenshot above.
 
 <details>
-<summary>See all 7 themes</summary>
+<summary>See all included themes</summary>
 
 **Default Dark**
 ![Default Dark](screenshots/kanban-default.png)
@@ -90,6 +90,9 @@ Soft Light theme is shown in the main screenshot above.
 
 **GitHub Clean**
 ![GitHub Clean](screenshots/kanban-github-clean.png)
+
+**Catppuccin**
+Latte, Frappe, Macchiato, and Mocha are available from the theme switcher.
 
 </details>
 
@@ -127,7 +130,7 @@ chmod +x beads-web-*
 beads-web-win-x64.exe
 ```
 
-Open http://localhost:3007. The frontend is embedded in the binary — no Node.js or Rust needed.
+Open http://localhost:3008. The frontend is embedded in the binary — no Node.js or Rust needed.
 
 ## Development
 

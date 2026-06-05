@@ -90,8 +90,13 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber)
         .expect("Failed to set tracing subscriber");
 
-    // Parse port from environment variable, default to 3008
-    let port: u16 = env::var("PORT")
+    // Parse bind host and port from environment variables.
+    let host = env::var("BEADS_WEB_HOST")
+        .or_else(|_| env::var("HOST"))
+        .unwrap_or_else(|_| "0.0.0.0".to_string());
+
+    let port: u16 = env::var("BEADS_WEB_PORT")
+        .or_else(|_| env::var("PORT"))
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(3008);
@@ -197,12 +202,12 @@ async fn main() {
         .layer(Extension(dolt_manager))
         .layer(cors);
 
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("{}:{}", host, port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("Failed to bind to address");
 
-    info!("Server starting on http://localhost:{}", port);
+    info!("Server starting on http://{}", addr);
 
     // Open default browser
     if let Err(e) = open::that(format!("http://localhost:{}", port)) {

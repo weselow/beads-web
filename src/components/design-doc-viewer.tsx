@@ -18,10 +18,9 @@ import {
   MorphingDialogDescription,
 } from "@/components/ui/morphing-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { apiUrl } from "@/lib/api-base";
 import { cn } from "@/lib/utils";
 import "highlight.js/styles/github-dark.css";
-
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3008';
 
 export interface DesignDocViewerProps {
   /** Path to design doc (e.g., ".designs/{EPIC_ID}.md") */
@@ -43,7 +42,7 @@ async function fetchDesignDoc(path: string, projectPath: string): Promise<string
   const encodedPath = encodeURIComponent(path);
   const encodedProjectPath = encodeURIComponent(projectPath);
   const response = await fetch(
-    `${API_BASE}/api/fs/read?path=${encodedPath}&project_path=${encodedProjectPath}`
+    apiUrl(`/api/fs/read?path=${encodedPath}&project_path=${encodedProjectPath}`)
   );
   if (!response.ok) {
     throw new Error('Failed to fetch design doc: ' + response.statusText);
