@@ -27,6 +27,12 @@ use tracing_subscriber::FmtSubscriber;
 #[folder = "../out/"]
 struct Assets;
 
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
 /// Serves embedded static files, with fallback to index.html for SPA routing.
 async fn serve_static(req: Request<Body>) -> impl IntoResponse {
     let path = req.uri().path().trim_start_matches('/');
@@ -209,9 +215,10 @@ async fn main() {
 
     info!("Server starting on http://{}", addr);
 
-    // Open default browser
-    if let Err(e) = open::that(format!("http://localhost:{}", port)) {
-        tracing::warn!("Failed to open browser: {}", e);
+    if env_flag("BEADS_WEB_OPEN_BROWSER") {
+        if let Err(e) = open::that(format!("http://localhost:{}", port)) {
+            tracing::warn!("Failed to open browser: {}", e);
+        }
     }
 
     // Start the server
