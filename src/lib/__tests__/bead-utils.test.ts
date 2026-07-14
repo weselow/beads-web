@@ -11,22 +11,29 @@ import {
 } from '@/lib/bead-utils';
 
 describe('formatBeadId', () => {
-  it('uppercases BD- prefix IDs', () => {
-    expect(formatBeadId('bd-abc')).toBe('BD-ABC');
+  it('preserves and upper-cases the workspace prefix', () => {
+    expect(formatBeadId('pa-pne9')).toBe('PA-pne9');
+    expect(formatBeadId('dc-xyz')).toBe('DC-xyz');
+    expect(formatBeadId('beads-web-2m8')).toBe('BEADS-WEB-2m8');
+  });
+
+  it('handles the default bd prefix', () => {
+    expect(formatBeadId('bd-abc')).toBe('BD-abc');
     expect(formatBeadId('BD-ABC')).toBe('BD-ABC');
   });
 
-  it('truncates long BD- IDs to maxLen', () => {
-    expect(formatBeadId('bd-abcdefghijklm', 6)).toBe('BD-hijklm');
+  it('keeps the last segment as the short id for multi-dash ids', () => {
+    expect(formatBeadId('beads-kanban-ui-abc123')).toBe('BEADS-KANBAN-UI-abc123');
   });
 
-  it('extracts last segment for non-BD IDs', () => {
-    expect(formatBeadId('beads-kanban-ui-abc123')).toBe('BD-abc123');
+  it('truncates a long suffix to maxLen', () => {
+    expect(formatBeadId('bd-abcdefghijklm', 6)).toBe('BD-abcdef');
+    expect(formatBeadId('project-abcdefgh', 8)).toBe('PROJECT-abcdefgh');
+    expect(formatBeadId('project-abcdefgh', 4)).toBe('PROJECT-abcd');
   });
 
-  it('uses maxLen param for short ID', () => {
-    expect(formatBeadId('project-abcdefgh', 8)).toBe('BD-abcdefgh');
-    expect(formatBeadId('project-abcdefgh', 4)).toBe('BD-abcd');
+  it('upper-cases ids without a dash', () => {
+    expect(formatBeadId('nodash')).toBe('NODASH');
   });
 });
 

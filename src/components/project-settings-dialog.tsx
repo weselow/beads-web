@@ -236,7 +236,7 @@ export function ProjectSettingsDialog({
                     id="settings-dolt-source"
                     value={path}
                     onChange={(e) => setPath(e.target.value)}
-                    placeholder="dolt://host:port/database"
+                    placeholder="dolt://database_name"
                   />
                   {localPath && (
                     <Button

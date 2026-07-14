@@ -125,10 +125,15 @@ function getPRChecksDisplay(prStatus: PRStatus): { icon: React.ReactNode; text: 
 }
 
 /**
- * Get the display label for the bead type
+ * Get the display label for the bead type.
+ *
+ * Renders the actual `issue_type` (task, bug, feature, epic, story, spike,
+ * milestone, …) capitalized, instead of collapsing every non-epic type to
+ * "Task". Falls back to "Task" when the type is missing.
  */
 function getTypeLabel(bead: Bead): string {
-  return bead.issue_type === "epic" ? "Epic" : "Task";
+  const type = bead.issue_type ?? "task";
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 /**
