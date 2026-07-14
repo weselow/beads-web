@@ -138,6 +138,18 @@ Update later with `scoop update beads-web`.
 nix run github:weselow/beads-web
 ```
 
+**Homebrew (macOS / Linux):**
+
+```bash
+brew install weselow/beads-web/beads-web
+```
+
+**winget (Windows):**
+
+```powershell
+winget install weselow.beads-web
+```
+
 ### Run
 
 ```bash
