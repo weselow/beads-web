@@ -4,7 +4,7 @@
  */
 
 import { BeadsResponseSchema, PRStatusSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
-import type { Project, Tag, Bead, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryResponse, MemoryStats, MemoryEntry, Agent, AgentModel } from '@/types';
+import type { Project, Tag, Bead, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryEntry, Agent, AgentModel } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3008';
 
@@ -358,28 +358,23 @@ export const fs = {
  * Memory API
  */
 export const memory = {
-  /** Fetch all memory entries and stats */
-  list: (path: string) => fetchApi<MemoryResponse>(
+  /** Fetch all memory entries */
+  list: (path: string) => fetchApi<MemoryEntry[]>(
     `/api/memory?path=${encodeURIComponent(path)}`
   ),
 
-  /** Fetch memory stats only (lightweight) */
-  stats: (path: string) => fetchApi<MemoryStats>(
-    `/api/memory/stats?path=${encodeURIComponent(path)}`
-  ),
-
-  /** Update an entry's content and/or tags */
-  update: (path: string, key: string, content?: string, tags?: string[]) =>
-    fetchApi<{ success: boolean; entry: MemoryEntry }>('/api/memory', {
+  /** Create or upsert a memory entry (empty key = auto-generate) */
+  update: (path: string, key: string, content: string) =>
+    fetchApi<MemoryEntry>('/api/memory', {
       method: 'PUT',
-      body: JSON.stringify({ path, key, content, tags }),
+      body: JSON.stringify({ path, key, content }),
     }),
 
-  /** Delete or archive an entry */
-  remove: (path: string, key: string, archive: boolean) =>
-    fetchApi<{ success: boolean; archived: boolean }>('/api/memory', {
+  /** Delete a memory entry */
+  remove: (path: string, key: string) =>
+    fetchApi<{ success: boolean }>('/api/memory', {
       method: 'DELETE',
-      body: JSON.stringify({ path, key, archive }),
+      body: JSON.stringify({ path, key }),
     }),
 };
 

@@ -2,7 +2,7 @@
 
 use axum::{extract::Extension, response::IntoResponse, Json};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::db::Database;
@@ -307,10 +307,8 @@ fn parse_data_dir_from_cmdline(cmdline: &str) -> Option<PathBuf> {
     for (i, part) in parts.iter().enumerate() {
         let data_dir = if (*part == "--data-dir") && i + 1 < parts.len() {
             Some(parts[i + 1])
-        } else if let Some(val) = part.strip_prefix("--data-dir=") {
-            Some(val)
         } else {
-            None
+            part.strip_prefix("--data-dir=")
         };
 
         if let Some(dir) = data_dir {
@@ -328,7 +326,7 @@ fn parse_data_dir_from_cmdline(cmdline: &str) -> Option<PathBuf> {
 }
 
 /// Strips `.beads/dolt/` or `.beads/dolt` suffix from a path to get the project root.
-fn strip_beads_dolt_suffix(path: &PathBuf) -> Option<PathBuf> {
+fn strip_beads_dolt_suffix(path: &Path) -> Option<PathBuf> {
     let path_str = path.to_string_lossy();
     // Normalize separators for matching
     let normalized = path_str.replace('\\', "/");
