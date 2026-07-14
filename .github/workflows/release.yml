@@ -134,3 +134,58 @@ jobs:
           git add bucket/beads-web.json
           git commit -m "chore(scoop): update manifest for $TAG"
           git push origin main
+
+      - name: Update Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping Homebrew update"
+            exit 0
+          fi
+          TAG="${{ inputs.version || github.ref_name }}"
+          VERSION="${TAG#v}"
+          ARM=$(sha256sum release/beads-web-darwin-arm64 | cut -d' ' -f1)
+          INTEL=$(sha256sum release/beads-web-darwin-x64 | cut -d' ' -f1)
+          LINUX=$(sha256sum release/beads-web-linux-x64 | cut -d' ' -f1)
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/weselow/homebrew-beads-web.git" tap
+          mkdir -p tap/Formula
+          sed -e "s|__VERSION__|${VERSION}|g" \
+              -e "s|__ARM_SHA__|${ARM}|g" \
+              -e "s|__INTEL_SHA__|${INTEL}|g" \
+              -e "s|__LINUX_SHA__|${LINUX}|g" \
+              repo/packaging/homebrew/beads-web.rb.tmpl > tap/Formula/beads-web.rb
+          cd tap
+          git add Formula/beads-web.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew formula already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "beads-web ${VERSION}"
+          git push origin HEAD:main
+
+  # `wingetcreate update` only works AFTER the package already exists in
+  # microsoft/winget-pkgs. The first submission is a one-time manual step:
+  #   wingetcreate submit packaging/winget --token <PAT>
+  # This job no-ops when WINGET_TOKEN is absent.
+  winget:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Submit winget manifest
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) {
+            Write-Host "WINGET_TOKEN not set — skipping winget submission"
+            exit 0
+          }
+          $tag = "${{ inputs.version || github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $url = "https://github.com/weselow/beads-web/releases/download/$tag/beads-web-win-x64.exe"
+          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe update weselow.beads-web --version $version --urls $url --submit --token $env:WINGET_TOKEN

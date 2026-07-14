@@ -116,6 +116,20 @@ Beads Web даёт вам Kanban-доску в реальном времени, 
 | macOS Intel | `beads-web-darwin-x64` |
 | Linux x64 | `beads-web-linux-x64` |
 
+### Менеджеры пакетов
+
+**Homebrew (macOS / Linux):**
+
+```bash
+brew install weselow/beads-web/beads-web
+```
+
+**winget (Windows):**
+
+```powershell
+winget install weselow.beads-web
+```
+
 ### Запуск
 
 ```bash

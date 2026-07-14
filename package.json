@@ -1,6 +1,7 @@
 {
   "name": "beads-web",
   "version": "0.11.2",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev -p 3007",
     "build": "next build",
