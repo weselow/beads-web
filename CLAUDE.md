@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Beads Web — visual Kanban board and multi-project dashboard for beads task tracking. Next.js 14 frontend with Rust/Axum backend. Real-time sync, epic support, 7 themes, GitOps, Dolt integration.
+Beads Web — visual Kanban board and multi-project dashboard for beads task tracking. Next.js 14 frontend with Rust/Axum backend. Real-time sync, epic support, 11 themes, GitOps, Dolt integration.
 
 ## Tech Stack
 
@@ -97,7 +97,7 @@ The more specific the LEARNED comment, the more useful it is next time.
 - GitHub: https://github.com/weselow/beads-web
 - npm package name: `beads-web`
 - Default branch: `main` (merged from production, production branch kept for now)
-- 7 themes implemented with CSS variables and persistence
+- 11 themes implemented with CSS variables and persistence
 - Dolt direct SQL integration working
 - Windows compatibility fixed (multi-drive paths, validation)
 - GitHub Releases CI configured (`.github/workflows/release.yml`) — cross-platform binaries on tag push
@@ -108,7 +108,7 @@ The more specific the LEARNED comment, the more useful it is next time.
 Single binary — frontend is embedded via rust-embed. No npm publish needed.
 
 - Tag `v*` triggers GitHub Actions → builds for macOS arm64/x64, Linux x64, Windows x64
-- Users download binary from GitHub Releases, run it, open http://localhost:3007
+- Users download binary from GitHub Releases, run it, open http://localhost:3008
 - `next dev` requires commenting out `output: 'export'` in `next.config.js`
 
 ## Git Notes
