@@ -157,13 +157,13 @@ jobs:
               -e "s|__LINUX_SHA__|${LINUX}|g" \
               repo/packaging/homebrew/beads-web.rb.tmpl > tap/Formula/beads-web.rb
           cd tap
-          if git diff --quiet -- Formula/beads-web.rb; then
+          git add Formula/beads-web.rb
+          if git diff --cached --quiet; then
             echo "Homebrew formula already up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/beads-web.rb
           git commit -m "beads-web ${VERSION}"
           git push origin HEAD:main
 
