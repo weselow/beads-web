@@ -200,6 +200,7 @@ impl DoltManager {
     }
 
     /// Updates a bead's fields in a Dolt database and commits the change.
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_bead(
         &self,
         db_name: &str,
@@ -207,6 +208,8 @@ impl DoltManager {
         title: Option<&str>,
         description: Option<&str>,
         status: Option<&str>,
+        issue_type: Option<&str>,
+        priority: Option<i32>,
     ) -> Result<(), DoltError> {
         let mut sets = Vec::new();
         let mut params: Vec<(Vec<u8>, mysql_async::Value)> = Vec::new();
@@ -222,6 +225,14 @@ impl DoltManager {
         if let Some(s) = status {
             sets.push("status = :status".to_string());
             params.push((b"status".to_vec(), s.into()));
+        }
+        if let Some(t) = issue_type {
+            sets.push("issue_type = :issue_type".to_string());
+            params.push((b"issue_type".to_vec(), t.into()));
+        }
+        if let Some(p) = priority {
+            sets.push("priority = :priority".to_string());
+            params.push((b"priority".to_vec(), p.into()));
         }
 
         if sets.is_empty() {
