@@ -36,6 +36,8 @@ import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
 import { isBlocked } from "@/lib/bead-utils";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
+import { getIssueTypeMeta } from "@/lib/issue-types";
+import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoltProject } from "@/lib/utils";
 import type { Bead, BeadStatus } from "@/types";
 
@@ -49,11 +51,6 @@ const COLUMNS: { status: BeadStatus; title: string }[] = [
   { status: "inreview", title: "In Review" },
   { status: "closed", title: "Closed" },
 ];
-
-/**
- * Issue type filter options
- */
-type IssueTypeFilter = "all" | "epics" | "tasks";
 
 /**
  * Main Kanban board component with 4 columns, search, filter, and keyboard navigation
@@ -90,7 +87,7 @@ export default function KanbanBoard() {
     availableOwners,
   } = useBeadFilters(beads, ticketNumbers, 300);
 
-  // Issue type filter state (epics vs tasks)
+  // Issue type filter state ("all" or a specific issue type)
   const [typeFilter, setTypeFilter] = useState<IssueTypeFilter>("all");
 
   // Dolt project detection and filesystem path resolution
@@ -159,7 +156,8 @@ export default function KanbanBoard() {
 
   /**
    * Filter to only top-level beads (no parent_id)
-   * Then apply issue type filter (epics vs tasks)
+   * Then apply the issue type filter ("all" or a specific type).
+   * Unknown/missing issue types resolve to "task" via getIssueTypeMeta.
    * Child tasks should not appear in columns - they appear inside epic cards
    */
   const topLevelBeads = useMemo(() => {
@@ -167,10 +165,7 @@ export default function KanbanBoard() {
 
     // Apply issue type filter
     if (typeFilter === "all") return topLevel;
-    if (typeFilter === "epics") return topLevel.filter(b => b.issue_type === "epic");
-    if (typeFilter === "tasks") return topLevel.filter(b => b.issue_type !== "epic");
-
-    return topLevel;
+    return topLevel.filter(b => getIssueTypeMeta(b.issue_type).value === typeFilter);
   }, [filteredBeads, typeFilter]);
 
   /**

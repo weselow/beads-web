@@ -21,13 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import * as api from "@/lib/api";
-
-const ISSUE_TYPES = [
-  { value: "task", label: "Task" },
-  { value: "bug", label: "Bug" },
-  { value: "feature", label: "Feature" },
-  { value: "epic", label: "Epic" },
-];
+import { ISSUE_TYPES } from "@/lib/issue-types";
+import { cn } from "@/lib/utils";
 
 const PRIORITIES = [
   { value: "0", label: "P0 — Critical" },
@@ -158,11 +153,17 @@ export function CreateBeadDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-surface-raised border-b-default">
-                    {ISSUE_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value} className="text-t-secondary focus:bg-surface-overlay focus:text-t-primary">
-                        {t.label}
-                      </SelectItem>
-                    ))}
+                    {ISSUE_TYPES.map((t) => {
+                      const Icon = t.icon;
+                      return (
+                        <SelectItem key={t.value} value={t.value} className="text-t-secondary focus:bg-surface-overlay focus:text-t-primary">
+                          <span className="flex items-center gap-2">
+                            <Icon className={cn("size-3.5 shrink-0", t.colorClass)} aria-hidden="true" />
+                            {t.label}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
