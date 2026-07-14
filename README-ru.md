@@ -127,27 +127,66 @@ chmod +x beads-web-*
 beads-web-win-x64.exe
 ```
 
-Откройте http://localhost:3007. Frontend встроен в бинарник — Node.js и Rust не требуются.
+Откройте http://localhost:3008. Frontend встроен в бинарник — Node.js и Rust не требуются.
 
 ## Разработка
 
-Для контрибьюторов и локальной разработки:
+Требования: Node.js 20+, [Rust toolchain](https://rustup.rs/) и [Beads CLI](https://github.com/steveyegge/beads) (`bd`) в PATH.
 
 ```bash
 git clone https://github.com/weselow/beads-web.git
 cd beads-web
 npm install
-
-# Терминал 1: Frontend dev server
-npm run dev
-
-# Терминал 2: Rust backend
-cd server && cargo run
 ```
 
-Требования: Node.js 20+, Rust toolchain.
+Есть два сценария: **режим разработки** (frontend с горячей перезагрузкой) и **сборка из исходников** (готовый бинарник).
 
-Примечание: `next dev` требует закомментировать `output: 'export'` в `next.config.js`.
+### Режим разработки (горячая перезагрузка frontend)
+
+Dev-сервер Next.js (порт 3007) отдаёт frontend с горячей перезагрузкой; бэкенд на Rust (порт 3008) отдаёт API. Они общаются между собой через CORS — на бэкенде он открыт.
+
+1. **Укажите frontend адрес бэкенда:**
+
+   ```bash
+   cp .env.local.example .env.local   # задаёт NEXT_PUBLIC_BACKEND_URL=http://localhost:3008
+   ```
+
+2. **Сначала соберите папку `out/`** (пока `output: 'export'` ещё включён). Сервер на Rust встраивает `out/` через rust-embed, поэтому она должна существовать до сборки бэкенда:
+
+   ```bash
+   npm run build
+   ```
+
+3. **Только после этого** закомментируйте `output: 'export'` в `next.config.js` — `next dev` несовместим со статическим экспортом.
+
+4. **Запустите оба сервера** в разных терминалах:
+
+   ```bash
+   npm run dev              # Терминал 1 — frontend на http://localhost:3007
+   cd server && cargo run   # Терминал 2 — бэкенд/API на http://localhost:3008
+   ```
+
+5. Откройте **http://localhost:3007**. Правки frontend перезагружаются на лету; запросы к API уходят на бэкенд на порт 3008.
+
+> Шаг с `.env.local` / `NEXT_PUBLIC_BACKEND_URL` нужен **только для разработки**. Для сборки готового бинарника уберите его (или оставьте переменную незаданной) — там frontend и бэкенд работают на одном адресе.
+
+### Сборка из исходников (готовый бинарник)
+
+Собирает тот же самодостаточный бинарник, что публикует CI в [Releases](https://github.com/weselow/beads-web/releases/latest) — frontend встроен, поэтому Node.js и Rust при запуске не нужны.
+
+```bash
+npm install
+# оставьте `output: 'export'` включённым в next.config.js (это значение по умолчанию)
+npm run build                 # статический экспорт → out/
+cd server
+cargo build --release         # бинарник → server/target/release/beads-server (.exe на Windows)
+```
+
+Запустите бинарник и откройте **http://localhost:3008**:
+
+```bash
+./server/target/release/beads-server
+```
 
 ## FAQ
 
