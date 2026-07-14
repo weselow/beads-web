@@ -6,10 +6,9 @@ import {
   ArrowLeft,
   Calendar,
   Circle,
-  Layers,
+  Flag,
   Link2,
   Plus,
-  Square,
   X,
 } from "lucide-react";
 
@@ -31,9 +30,19 @@ import {
   getStatusDotColor,
 } from "@/lib/bead-utils";
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
+import { ISSUE_TYPES, getIssueTypeMeta } from "@/lib/issue-types";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, WorktreeStatus } from "@/types";
 
+
+/** Priority levels 0–4, displayed P0 (critical) … P4 (backlog). Single source for the editor options. */
+const PRIORITY_OPTIONS = [
+  { value: 0, label: "P0" },
+  { value: 1, label: "P1" },
+  { value: 2, label: "P2" },
+  { value: 3, label: "P3" },
+  { value: 4, label: "P4" },
+] as const;
 
 export interface BeadDetailProps {
   bead: Bead;
@@ -78,6 +87,8 @@ export function BeadDetail({
 
   const isReadOnly = !projectPath;
   const isDolt = projectPath ? isDoltProject(projectPath) : false;
+  const typeMeta = getIssueTypeMeta(bead.issue_type);
+  const TypeIcon = typeMeta.icon;
 
   const handleSaveTitle = useCallback(async (newTitle: string) => {
     if (!projectPath) return;
@@ -123,6 +134,28 @@ export function BeadDetail({
       toast({ variant: "destructive", title: "Failed to update status", description: err instanceof Error ? err.message : "Unknown error" });
     }
   }, [bead.id, projectPath, isDolt, onUpdate]);
+
+  const handleSaveIssueType = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!projectPath) return;
+    const newIssueType = e.target.value;
+    try {
+      await api.beads.update({ path: projectPath, id: bead.id, issue_type: newIssueType });
+      onUpdate?.();
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to update type", description: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }, [bead.id, projectPath, onUpdate]);
+
+  const handleSavePriority = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!projectPath) return;
+    const newPriority = Number(e.target.value);
+    try {
+      await api.beads.update({ path: projectPath, id: bead.id, priority: newPriority });
+      onUpdate?.();
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to update priority", description: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }, [bead.id, projectPath, onUpdate]);
 
   const [isAddSubtaskOpen, setIsAddSubtaskOpen] = useState(false);
   const hasWorktree = worktreeStatus?.exists ?? false;
@@ -243,12 +276,21 @@ export function BeadDetail({
           {/* Inline Metadata Row */}
           <div className="mt-6 flex justify-center items-center gap-3 text-sm text-t-tertiary">
             <span className="flex items-center gap-1.5">
-              {bead.issue_type === "epic" ? (
-                <Layers className="size-3.5" aria-hidden="true" />
+              <TypeIcon className="size-3.5" aria-hidden="true" />
+              {isReadOnly ? (
+                <span>{typeMeta.label}</span>
               ) : (
-                <Square className="size-3.5" aria-hidden="true" />
+                <select
+                  value={bead.issue_type}
+                  onChange={handleSaveIssueType}
+                  aria-label="Issue type"
+                  className="bg-transparent border-none text-sm text-t-tertiary cursor-pointer hover:text-t-secondary focus:outline-none appearance-none"
+                >
+                  {ISSUE_TYPES.map((meta) => (
+                    <option key={meta.value} value={meta.value}>{meta.label}</option>
+                  ))}
+                </select>
               )}
-              <span className="capitalize">{bead.issue_type}</span>
             </span>
             <span className="text-t-faint" aria-hidden="true">•</span>
             <span className="flex items-center gap-1.5">
@@ -265,6 +307,24 @@ export function BeadDetail({
                   <option value="in_progress">In Progress</option>
                   <option value="inreview">In Review</option>
                   <option value="closed">Closed</option>
+                </select>
+              )}
+            </span>
+            <span className="text-t-faint" aria-hidden="true">•</span>
+            <span className="flex items-center gap-1.5">
+              <Flag className="size-3.5" aria-hidden="true" />
+              {isReadOnly ? (
+                <span>P{bead.priority}</span>
+              ) : (
+                <select
+                  value={bead.priority}
+                  onChange={handleSavePriority}
+                  aria-label="Priority"
+                  className="bg-transparent border-none text-sm text-t-tertiary cursor-pointer hover:text-t-secondary focus:outline-none appearance-none"
+                >
+                  {PRIORITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
               )}
             </span>
