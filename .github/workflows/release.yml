@@ -88,6 +88,12 @@ jobs:
           find artifacts -type f -exec mv {} release/ \;
           ls -la release/
 
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
@@ -95,3 +101,36 @@ jobs:
           tag_name: ${{ inputs.version || github.ref_name }}
           files: release/*
           generate_release_notes: true
+
+      # Keep the self-hosted Scoop manifest (bucket/beads-web.json) in sync with
+      # each release: refresh version + Windows-exe hash and commit to main.
+      # Mirrors the Nix hash-refresh auto-commit already used by ci.yml.
+      - name: Checkout main for Scoop manifest
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          path: repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Scoop manifest
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.version || github.ref_name }}"
+          VERSION="${TAG#v}"
+          HASH="$(sha256sum release/beads-web-win-x64.exe | cut -d' ' -f1)"
+          cd repo
+          jq --arg v "$VERSION" --arg h "$HASH" --arg tag "$TAG" \
+            '.version = $v
+             | .architecture."64bit".url = "https://github.com/weselow/beads-web/releases/download/" + $tag + "/beads-web-win-x64.exe#/beads-web.exe"
+             | .architecture."64bit".hash = $h' \
+            bucket/beads-web.json > bucket/beads-web.json.tmp
+          mv bucket/beads-web.json.tmp bucket/beads-web.json
+          if git diff --quiet -- bucket/beads-web.json; then
+            echo "Scoop manifest already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/beads-web.json
+          git commit -m "chore(scoop): update manifest for $TAG"
+          git push origin main
