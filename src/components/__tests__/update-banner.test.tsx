@@ -53,7 +53,7 @@ describe('UpdateBanner', () => {
       expect(screen.getByText('Update available: v0.4.0')).toBeInTheDocument();
     });
 
-    const link = screen.getByText('Download from GitHub');
+    const link = screen.getByText('GitHub');
     expect(link).toHaveAttribute('href', 'https://github.com/example/releases/v0.4.0');
     expect(link).toHaveAttribute('target', '_blank');
   });

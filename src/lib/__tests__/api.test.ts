@@ -13,6 +13,7 @@ function mockResponse(data: unknown, status = 200) {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? 'OK' : 'Error',
+    headers: new Headers(),
     json: () => Promise.resolve(data),
   } as Response;
 }
