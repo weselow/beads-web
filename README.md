@@ -119,6 +119,25 @@ Download the binary for your platform from [GitHub Releases](https://github.com/
 | macOS Intel | `beads-web-darwin-x64` |
 | Linux x64 | `beads-web-linux-x64` |
 
+Each release also ships a `SHA256SUMS.txt` to verify your download.
+
+### Package managers
+
+**Scoop (Windows):**
+
+```powershell
+scoop bucket add beads-web https://github.com/weselow/beads-web
+scoop install beads-web
+```
+
+Update later with `scoop update beads-web`.
+
+**Nix (macOS / Linux / WSL):**
+
+```bash
+nix run github:weselow/beads-web
+```
+
 ### Run
 
 ```bash
