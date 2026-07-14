@@ -1,5 +1,6 @@
-import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+
+import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -8,7 +9,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
-    exclude: ['node_modules', 'tests/**'],
+    exclude: ['node_modules', 'tests/**', '**/.worktrees/**'],
   },
   resolve: {
     alias: {
