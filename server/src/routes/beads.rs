@@ -154,8 +154,10 @@ pub struct Bead {
     pub parent_id: Option<String>,
     #[serde(default)]
     pub children: Option<Vec<String>>,
-    #[serde(default, alias = "design")]
-    pub design_doc: Option<String>,
+    #[serde(default)]
+    pub design: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
     #[serde(default)]
     pub deps: Option<Vec<String>>,
     #[serde(default, alias = "related")]
@@ -374,35 +376,42 @@ async fn read_beads_from_cli(project_path: &Path, updated_after: Option<&str>) -
     let mut beads: Vec<Bead> = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse bd list output: {}", e))?;
 
-    // Get all comments
-    let comments_output = run_bd(
+    // Get all comments. Try `bd sql` first; on any failure (notably "not yet
+    // supported in embedded mode" for JSONL-only projects), fall back to
+    // reading comments from .beads/issues.jsonl, which embeds them per issue.
+    let mut comments_map: HashMap<String, Vec<Comment>> = HashMap::new();
+    let sql_result = run_bd(
         &["sql", "SELECT * FROM comments ORDER BY issue_id, id", "--json"],
         project_path,
     )
     .await;
-
-    if let Ok(output) = comments_output {
-        let json_str = extract_json_array(&output).unwrap_or("[]");
-        if let Ok(comments) = serde_json::from_str::<Vec<Comment>>(json_str) {
-            // Group comments by issue_id
-            let mut comments_map: HashMap<String, Vec<Comment>> = HashMap::new();
-            for comment in comments {
-                comments_map
-                    .entry(comment.issue_id.clone())
-                    .or_default()
-                    .push(comment);
-            }
-            // Merge into beads
-            for bead in &mut beads {
-                if let Some(bead_comments) = comments_map.remove(&bead.id) {
-                    bead.comments = Some(bead_comments);
+    match sql_result {
+        Ok(output) => {
+            let json_str = extract_json_array(&output).unwrap_or("[]");
+            match serde_json::from_str::<Vec<Comment>>(json_str) {
+                Ok(comments) => {
+                    for comment in comments {
+                        comments_map
+                            .entry(comment.issue_id.clone())
+                            .or_default()
+                            .push(comment);
+                    }
+                }
+                Err(_) => {
+                    tracing::warn!("Failed to parse comments from bd sql, falling back to JSONL");
+                    load_comments_from_jsonl(project_path, &mut comments_map);
                 }
             }
-        } else {
-            tracing::warn!("Failed to parse comments from bd sql, continuing without comments");
         }
-    } else {
-        tracing::warn!("Failed to fetch comments via bd sql, continuing without comments");
+        Err(_) => {
+            load_comments_from_jsonl(project_path, &mut comments_map);
+        }
+    }
+
+    for bead in &mut beads {
+        if let Some(bead_comments) = comments_map.remove(&bead.id) {
+            bead.comments = Some(bead_comments);
+        }
     }
 
     Ok(beads)
@@ -419,6 +428,26 @@ fn is_non_issue_record(line: &str) -> bool {
         serde_json::from_str::<serde_json::Value>(line),
         Ok(serde_json::Value::Object(ref obj)) if obj.contains_key("_type")
     )
+}
+
+/// Reads comments from .beads/issues.jsonl and inserts them into `comments_map`.
+/// Used when `bd sql` is unavailable (embedded mode).
+fn load_comments_from_jsonl(project_path: &Path, comments_map: &mut HashMap<String, Vec<Comment>>) {
+    let issues_path = project_path.join(".beads").join("issues.jsonl");
+    let jsonl_beads = match read_beads_from_jsonl(&issues_path) {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("Failed to load comments from JSONL ({}); continuing without comments", e);
+            return;
+        }
+    };
+    for bead in jsonl_beads {
+        if let Some(comments) = bead.comments {
+            if !comments.is_empty() {
+                comments_map.insert(bead.id, comments);
+            }
+        }
+    }
 }
 
 /// Reads beads from the JSONL file (fallback when bd CLI is unavailable).
@@ -1201,19 +1230,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bead_with_design_field() {
-        // Test that alias "design" works
-        let json = r#"{"id":"test-789","title":"With Design","status":"open","design":"path/to/design.md"}"#;
+    fn test_parse_bead_with_design_and_notes() {
+        let json = r#"{"id":"test-789","title":"With Design","status":"open","design":"some design notes","notes":"some extra notes"}"#;
         let bead: Bead = serde_json::from_str(json).unwrap();
-        assert_eq!(bead.design_doc, Some("path/to/design.md".to_string()));
-    }
-
-    #[test]
-    fn test_parse_bead_with_design_doc_field() {
-        // Test that original "design_doc" still works
-        let json = r#"{"id":"test-790","title":"With Design Doc","status":"open","design_doc":"path/to/design2.md"}"#;
-        let bead: Bead = serde_json::from_str(json).unwrap();
-        assert_eq!(bead.design_doc, Some("path/to/design2.md".to_string()));
+        assert_eq!(bead.design, Some("some design notes".to_string()));
+        assert_eq!(bead.notes, Some("some extra notes".to_string()));
     }
 
     #[test]
@@ -1389,7 +1410,8 @@ mod tests {
             comments: None,
             parent_id: None,
             children: None,
-            design_doc: None,
+            design: None,
+            notes: None,
             deps: None,
             relates_to: Some(vec!["bead-r1".to_string(), "bead-r2".to_string()]),
             dependencies: None,

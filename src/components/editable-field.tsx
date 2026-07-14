@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,11 +19,14 @@ interface EditableFieldProps {
   className?: string;
   /** Placeholder when empty */
   placeholder?: string;
+  /** Optional renderer for the display value (e.g. Markdown). Plain text used if omitted. */
+  renderValue?: (value: string) => React.ReactNode;
 }
 
 /**
- * Click-to-edit field with auto-save on blur/Enter.
- * Shows a subtle spinner during save and reverts on error.
+ * Editable field with auto-save on blur/Enter.
+ * In display mode shows a small pen icon on hover; click swaps to input/textarea.
+ * Layout adapts to renderValue: block (div) when provided, inline (span) when not.
  */
 export function EditableField({
   value,
@@ -32,6 +35,7 @@ export function EditableField({
   multiline,
   className,
   placeholder,
+  renderValue,
 }: EditableFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
@@ -90,12 +94,12 @@ export function EditableField({
     }
   };
 
+  const displayBody = value
+    ? (renderValue ? renderValue(value) : value)
+    : <span className="text-t-faint italic">{placeholder}</span>;
+
   if (disabled) {
-    return (
-      <span className={className}>
-        {value || <span className="text-t-faint italic">{placeholder}</span>}
-      </span>
-    );
+    return <span className={className}>{displayBody}</span>;
   }
 
   if (isSaving) {
@@ -137,16 +141,36 @@ export function EditableField({
     );
   }
 
-  return (
-    <span
+  const editButton = (
+    <button
+      type="button"
       onClick={() => setIsEditing(true)}
+      aria-label="Edit"
       className={cn(
-        "cursor-text hover:bg-surface-overlay/50 rounded px-1 -mx-1 transition-colors",
-        className
+        "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity",
+        "text-t-muted hover:text-t-secondary rounded p-0.5",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-t-tertiary"
       )}
-      title="Click to edit"
     >
-      {value || <span className="text-t-faint italic">{placeholder}</span>}
+      <Pencil className="size-3.5" aria-hidden="true" />
+    </button>
+  );
+
+  // Block layout for renderValue (e.g. Markdown): div with pen absolutely top-right.
+  if (renderValue) {
+    return (
+      <div className={cn("group relative", className)}>
+        {displayBody}
+        <div className="absolute top-0 right-0">{editButton}</div>
+      </div>
+    );
+  }
+
+  // Inline layout for plain text (e.g. title): pen sits inline after the value.
+  return (
+    <span className={cn("group inline-flex items-baseline gap-1.5", className)}>
+      <span>{displayBody}</span>
+      {editButton}
     </span>
   );
 }

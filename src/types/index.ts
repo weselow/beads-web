@@ -129,7 +129,9 @@ export interface Bead {
   // Epic support fields
   parent_id?: string;         // ID of parent epic (for child tasks)
   children?: string[];        // IDs of child tasks (for epics)
-  design_doc?: string;        // Path like ".designs/{EPIC_ID}.md"
+  design?: string;            // Inline design notes (bd --design)
+  notes?: string;             // Supplementary notes (bd --notes)
+  close_reason?: string;      // Reason set when closing (bd close --reason)
   deps?: string[];            // Dependency IDs (blocking this task)
   blockers?: string[];        // COMPUTED: Tasks this blocks (derived from deps relationships)
   relates_to?: string[];      // Bead IDs with relates-to links (bidirectional "see also")
