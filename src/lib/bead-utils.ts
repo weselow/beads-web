@@ -8,17 +8,23 @@
 import type { BeadStatus } from "@/types";
 
 /**
- * Format bead ID for display.
- * @param id - Raw bead ID (e.g., "beads-kanban-ui-jkk.1" or "BD-abc123")
+ * Format bead ID for display, preserving the workspace prefix.
+ *
+ * Beads supports arbitrary per-workspace ID prefixes (`bd init --prefix`),
+ * e.g. `pa-pne9`, `dc-xyz`, `beads-web-2m8`. The prefix is everything before
+ * the last dash and is upper-cased for display. The suffix after the last
+ * dash is kept as-is (real IDs use lower-case + digits) and truncated to
+ * `maxLen`. IDs without a dash are returned upper-cased.
+ *
+ * @param id - Raw bead ID (e.g., "pa-pne9", "beads-web-2m8", "BD-abc123")
  * @param maxLen - Max chars for the short ID portion (6 for cards, 8 for detail)
  */
 export function formatBeadId(id: string, maxLen = 6): string {
-  if (id.startsWith("BD-") || id.startsWith("bd-")) {
-    return id.length > maxLen + 3 ? `BD-${id.slice(-maxLen)}` : id.toUpperCase();
-  }
-  const parts = id.split("-");
-  const shortId = parts[parts.length - 1];
-  return `BD-${shortId.slice(0, maxLen)}`;
+  const dashIdx = id.lastIndexOf("-");
+  if (dashIdx === -1) return id.toUpperCase();
+  const prefix = id.slice(0, dashIdx).toUpperCase();
+  const shortId = id.slice(dashIdx + 1, dashIdx + 1 + maxLen);
+  return `${prefix}-${shortId}`;
 }
 
 /**
