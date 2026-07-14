@@ -153,23 +153,62 @@ Open http://localhost:3008. The frontend is embedded in the binary — no Node.j
 
 ## Development
 
-For contributing or local development:
+Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/), and the [Beads CLI](https://github.com/steveyegge/beads) (`bd`) in PATH.
 
 ```bash
 git clone https://github.com/weselow/beads-web.git
 cd beads-web
 npm install
-
-# Terminal 1: Frontend dev server
-npm run dev
-
-# Terminal 2: Rust backend
-cd server && cargo run
 ```
 
-Prerequisites: Node.js 20+, Rust toolchain.
+There are two workflows: **Dev Mode** (frontend hot-reload) and **Build from Source** (release binary).
 
-Note: `next dev` requires commenting out `output: 'export'` in `next.config.js`.
+### Dev Mode (frontend hot-reload)
+
+The Next.js dev server (port 3007) serves the frontend with hot-reload; the Rust backend (port 3008) serves the API. They talk cross-origin — CORS is open on the backend.
+
+1. **Point the frontend at the backend:**
+
+   ```bash
+   cp .env.local.example .env.local   # sets NEXT_PUBLIC_BACKEND_URL=http://localhost:3008
+   ```
+
+2. **Generate the `out/` folder once** (with `output: 'export'` still enabled). The Rust server embeds `out/` via rust-embed, so it must exist before you build the backend:
+
+   ```bash
+   npm run build
+   ```
+
+3. **Then** comment out `output: 'export'` in `next.config.js` — `next dev` is incompatible with static export.
+
+4. **Run both servers** in separate terminals:
+
+   ```bash
+   npm run dev              # Terminal 1 — frontend on http://localhost:3007
+   cd server && cargo run   # Terminal 2 — backend/API on http://localhost:3008
+   ```
+
+5. Open **http://localhost:3007**. Frontend edits hot-reload; API requests go to the backend on :3008.
+
+> The `.env.local` / `NEXT_PUBLIC_BACKEND_URL` step is **dev-only**. Remove it (or leave it unset) for a release build, where frontend and backend share one origin.
+
+### Build from Source (release binary)
+
+Produces the same self-contained binary that CI publishes to [Releases](https://github.com/weselow/beads-web/releases/latest) — the frontend is embedded, so no Node.js or Rust is needed at runtime.
+
+```bash
+npm install
+# keep `output: 'export'` enabled in next.config.js (the default)
+npm run build                 # static export → out/
+cd server
+cargo build --release         # binary → server/target/release/beads-server (.exe on Windows)
+```
+
+Run the binary and open **http://localhost:3008**:
+
+```bash
+./server/target/release/beads-server
+```
 
 ## FAQ
 
