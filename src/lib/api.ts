@@ -3,8 +3,8 @@
  * Replaces Tauri invoke() calls with HTTP fetch to backend
  */
 
-import { BeadsResponseSchema, PRStatusSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
 import { apiUrl } from '@/lib/api-base';
+import { BeadsResponseSchema, PRStatusSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
 import type { Project, Tag, Bead, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryEntry, Agent, AgentModel } from '@/types';
 
 /**
@@ -167,7 +167,7 @@ export const beads = {
     body: JSON.stringify(data),
   }),
 
-  update: (data: { path: string; id: string; title?: string; description?: string; status?: string }) =>
+  update: (data: { path: string; id: string; title?: string; description?: string; status?: string; issue_type?: string; priority?: number }) =>
     fetchApi<{ success: boolean }>('/api/beads/update', {
       method: 'PATCH',
       body: JSON.stringify(data),
