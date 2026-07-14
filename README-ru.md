@@ -118,6 +118,21 @@ Beads Web даёт вам Kanban-доску в реальном времени, 
 
 ### Менеджеры пакетов
 
+**Scoop (Windows):**
+
+```powershell
+scoop bucket add beads-web https://github.com/weselow/beads-web
+scoop install beads-web
+```
+
+Обновление: `scoop update beads-web`.
+
+**Nix (macOS / Linux / WSL):**
+
+```bash
+nix run github:weselow/beads-web
+```
+
 **Homebrew (macOS / Linux):**
 
 ```bash
@@ -129,6 +144,8 @@ brew install weselow/beads-web/beads-web
 ```powershell
 winget install weselow.beads-web
 ```
+
+> winget станет доступен после того, как заявка будет принята в общий каталог winget.
 
 ### Запуск
 
