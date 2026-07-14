@@ -776,6 +776,10 @@ pub struct UpdateBeadRequest {
     pub description: Option<String>,
     /// New status (optional)
     pub status: Option<String>,
+    /// New issue type: task, bug, feature, epic (optional)
+    pub issue_type: Option<String>,
+    /// New priority 0-4 (optional)
+    pub priority: Option<i32>,
 }
 
 /// PATCH /api/beads/update
@@ -793,12 +797,25 @@ pub async fn update_bead_handler(
         );
     }
 
-    let has_changes = req.title.is_some() || req.description.is_some() || req.status.is_some();
+    let has_changes = req.title.is_some()
+        || req.description.is_some()
+        || req.status.is_some()
+        || req.issue_type.is_some()
+        || req.priority.is_some();
     if !has_changes {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "No fields to update" })),
         );
+    }
+
+    if let Some(p) = req.priority {
+        if !(0..=4).contains(&p) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Priority must be between 0 and 4" })),
+            );
+        }
     }
 
     // Dolt-only path: update via SQL
@@ -816,6 +833,8 @@ pub async fn update_bead_handler(
             req.title.as_deref(),
             req.description.as_deref(),
             req.status.as_deref(),
+            req.issue_type.as_deref(),
+            req.priority,
         ).await {
             Ok(()) => {
                 return (StatusCode::OK, Json(serde_json::json!({ "success": true })));
@@ -845,6 +864,12 @@ pub async fn update_bead_handler(
     }
     if let Some(ref s) = req.status {
         args.push(format!("--status={}", s));
+    }
+    if let Some(ref t) = req.issue_type {
+        args.push(format!("--type={}", t));
+    }
+    if let Some(p) = req.priority {
+        args.push(format!("--priority={}", p));
     }
 
     let result = tokio::time::timeout(
@@ -1044,7 +1069,7 @@ pub fn recompute_epic_statuses(issues_path: &Path) -> Result<Vec<String>, String
                 // but keep them in raw_lines for lossless write-back.
                 if value
                     .as_object()
-                    .map_or(false, |o| o.contains_key("_type"))
+                    .is_some_and(|o| o.contains_key("_type"))
                 {
                     raw_lines.push(value);
                     continue;
@@ -1757,7 +1782,9 @@ mod tests {
             "id": "TASK-042",
             "title": "Updated title",
             "description": "Updated desc",
-            "status": "in_progress"
+            "status": "in_progress",
+            "issue_type": "bug",
+            "priority": 1
         }"#;
         let req: UpdateBeadRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.path, "/projects/my-app");
@@ -1765,6 +1792,8 @@ mod tests {
         assert_eq!(req.title, Some("Updated title".to_string()));
         assert_eq!(req.description, Some("Updated desc".to_string()));
         assert_eq!(req.status, Some("in_progress".to_string()));
+        assert_eq!(req.issue_type, Some("bug".to_string()));
+        assert_eq!(req.priority, Some(1));
     }
 
     #[test]
@@ -1776,6 +1805,40 @@ mod tests {
         assert!(req.title.is_none());
         assert!(req.description.is_none());
         assert!(req.status.is_none());
+        assert!(req.issue_type.is_none());
+        assert!(req.priority.is_none());
+    }
+
+    #[test]
+    fn test_update_bead_request_issue_type_only() {
+        let json = r#"{"path": "dolt://beads_db", "id": "TASK-1", "issue_type": "feature"}"#;
+        let req: UpdateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.issue_type, Some("feature".to_string()));
+        assert!(req.priority.is_none());
+        assert!(req.title.is_none());
+    }
+
+    #[test]
+    fn test_update_bead_request_priority_only() {
+        let json = r#"{"path": "dolt://beads_db", "id": "TASK-1", "priority": 0}"#;
+        let req: UpdateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.priority, Some(0));
+        assert!(req.issue_type.is_none());
+    }
+
+    #[test]
+    fn test_update_bead_request_out_of_range_priority_deserializes() {
+        // Deserialization is permissive; range validation (0..=4) happens in the
+        // handler, which returns HTTP 400 for out-of-range values.
+        let json = r#"{"path": "dolt://beads_db", "id": "TASK-1", "priority": 9}"#;
+        let req: UpdateBeadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.priority, Some(9));
+        assert!(!(0..=4).contains(&req.priority.unwrap()));
+
+        let json_neg = r#"{"path": "dolt://beads_db", "id": "TASK-1", "priority": -1}"#;
+        let req_neg: UpdateBeadRequest = serde_json::from_str(json_neg).unwrap();
+        assert_eq!(req_neg.priority, Some(-1));
+        assert!(!(0..=4).contains(&req_neg.priority.unwrap()));
     }
 
     #[test]
