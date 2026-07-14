@@ -150,6 +150,8 @@ brew install weselow/beads-web/beads-web
 winget install weselow.beads-web
 ```
 
+> winget becomes available once the submission is accepted into the winget community repository.
+
 ### Run
 
 ```bash
