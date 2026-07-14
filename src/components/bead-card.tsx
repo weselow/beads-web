@@ -6,6 +6,7 @@ import { CopyableText } from "@/components/copyable-text";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 import { formatBeadId, formatWorktreePath, isBlocked, truncate } from "@/lib/bead-utils";
+import { getIssueTypeMeta } from "@/lib/issue-types";
 import { cn } from "@/lib/utils";
 import type { Bead, WorktreeStatus, PRStatus, StatusBadgeInfo } from "@/types";
 
@@ -125,10 +126,11 @@ function getPRChecksDisplay(prStatus: PRStatus): { icon: React.ReactNode; text: 
 }
 
 /**
- * Get the display label for the bead type
+ * Get the display label for the bead type.
+ * Delegates to the shared issue-type metadata (safe fallback to "Task").
  */
 function getTypeLabel(bead: Bead): string {
-  return bead.issue_type === "epic" ? "Epic" : "Task";
+  return getIssueTypeMeta(bead.issue_type).label;
 }
 
 /**
@@ -151,6 +153,10 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
   const blocked = isBlocked(bead, allBeads);
   const commentCount = (bead.comments ?? []).length;
   const relatedCount = (bead.relates_to ?? []).length;
+
+  // Issue-type metadata (icon + theme color) from the shared source of truth
+  const typeMeta = getIssueTypeMeta(bead.issue_type);
+  const TypeIcon = typeMeta.icon;
 
   const hasWorktree = worktreeStatus?.exists ?? false;
   const hasPR = prStatus?.pr !== null && prStatus?.pr !== undefined;
@@ -311,7 +317,8 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
               Blocked
             </span>
           )}
-          <span className="theme-badge text-[10px] font-medium px-1.5 py-0.5 bg-surface-overlay text-t-tertiary">
+          <span className="theme-badge inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 bg-surface-overlay text-t-tertiary">
+            <TypeIcon className={cn("size-3 shrink-0", typeMeta.colorClass)} aria-hidden="true" />
             {getTypeLabel(bead)}
           </span>
           {bead.priority !== undefined && bead.priority <= 2 && (
@@ -385,7 +392,10 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
                   {bead._statusBadge.label}
                 </Badge>
               )}
-              <Badge variant="outline" size="xs" className="theme-badge">{getTypeLabel(bead)}</Badge>
+              <Badge variant="outline" size="xs" className="theme-badge">
+                <TypeIcon className={cn("shrink-0", typeMeta.colorClass)} aria-hidden="true" />
+                {getTypeLabel(bead)}
+              </Badge>
             </div>
           </div>
 

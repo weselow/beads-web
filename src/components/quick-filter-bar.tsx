@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { Search, X, ArrowUpDown, SlidersHorizontal, BrainCircuit, Bot, AlertTriangle, Plus } from 'lucide-react';
+import { Search, X, ArrowUpDown, SlidersHorizontal, BrainCircuit, Bot, AlertTriangle, Plus, Shapes } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -15,17 +15,18 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
+import { ISSUE_TYPES, getIssueTypeMeta } from '@/lib/issue-types';
+import type { IssueTypeFilter } from '@/lib/issue-types';
 import { cn } from '@/lib/utils';
 import type { BeadStatus } from '@/types';
 
-type TypeFilter = 'all' | 'epics' | 'tasks';
+type TypeFilter = IssueTypeFilter;
 type SortField = 'ticket_number' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
@@ -82,12 +83,6 @@ interface QuickFilterBarProps {
   onNewBead?: () => void;
 }
 
-const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'epics', label: 'Epics' },
-  { value: 'tasks', label: 'Tasks' },
-];
-
 const SORT_OPTIONS: { value: string; label: string; field: SortField; direction: SortDirection }[] = [
   { value: 'ticket_number_desc', label: 'Ticket # (Newest)', field: 'ticket_number', direction: 'desc' },
   { value: 'ticket_number_asc', label: 'Ticket # (Oldest)', field: 'ticket_number', direction: 'asc' },
@@ -134,6 +129,10 @@ export function QuickFilterBar({
   onNewBead,
 }: QuickFilterBarProps) {
   const currentSortValue = `${sortField}_${sortDirection}`;
+
+  // Active issue-type filter metadata for the type dropdown trigger
+  const activeType = typeFilter === 'all' ? null : getIssueTypeMeta(typeFilter);
+  const TypeTriggerIcon = activeType?.icon ?? Shapes;
 
   const handleSortOptionSelect = (value: string) => {
     const option = SORT_OPTIONS.find((opt) => opt.value === value);
@@ -184,24 +183,49 @@ export function QuickFilterBar({
         </Button>
       )}
 
-      {/* Type Filter & Today - Unified Tabs */}
-      <Tabs
-        value={typeFilter}
-        onValueChange={(value) => onTypeFilterChange(value as TypeFilter)}
-        className="h-8"
-      >
-        <TabsList className="h-8 bg-surface-overlay/50 p-0.5">
-          {TYPE_OPTIONS.map((option) => (
-            <TabsTrigger
-              key={option.value}
-              value={option.value}
-              className="h-7 px-3 text-sm font-medium data-[state=active]:bg-surface-overlay data-[state=active]:text-t-primary data-[state=inactive]:text-t-tertiary data-[state=inactive]:hover:text-t-secondary"
-            >
-              {option.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      {/* Type Filter Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-8 px-3 gap-1.5 bg-surface-overlay/50 text-sm font-medium',
+              activeType ? 'text-t-primary' : 'text-t-tertiary hover:text-t-secondary'
+            )}
+            aria-label="Filter by issue type"
+          >
+            <TypeTriggerIcon className={cn('size-4 shrink-0', activeType?.colorClass)} aria-hidden="true" />
+            {activeType ? activeType.label : 'All types'}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="bg-surface-raised border-b-default">
+          <DropdownMenuCheckboxItem
+            checked={typeFilter === 'all'}
+            onCheckedChange={() => onTypeFilterChange('all')}
+            className="text-t-secondary focus:bg-surface-overlay focus:text-t-primary"
+          >
+            All types
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator className="bg-surface-overlay" />
+          {ISSUE_TYPES.map((option) => {
+            const Icon = option.icon;
+            return (
+              <DropdownMenuCheckboxItem
+                key={option.value}
+                checked={typeFilter === option.value}
+                onCheckedChange={() => onTypeFilterChange(option.value)}
+                className="text-t-secondary focus:bg-surface-overlay focus:text-t-primary"
+              >
+                <span className="flex items-center gap-2">
+                  <Icon className={cn('size-3.5 shrink-0', option.colorClass)} aria-hidden="true" />
+                  {option.label}
+                </span>
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Today's Active Toggle - styled to match tabs */}
       <button
