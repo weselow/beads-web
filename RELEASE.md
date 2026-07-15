@@ -22,12 +22,20 @@ distribution channel.
 
 ### 1. Bump the version
 
-The version lives in several files that are **not** auto-synced. Update all of
+The version lives in four files that are **not** auto-synced. Update all of
 them to the new version (e.g. `0.12.0`):
 
 - `package.json` → `"version"`
 - `server/Cargo.toml` → `version`
+- `server/Cargo.lock` → `version` in the `[[package]] name = "beads-server"` block
 - `flake.nix` → **both** `version = "…"` lines (the frontend package and the default package)
+
+> `Cargo.lock` is easy to miss and easy to get wrong. The Nix build reads it
+> (`cargoLock.lockFile = ./server/Cargo.lock`), so a stale version there breaks
+> `nix build` even though `cargo` itself would silently repair it. Do **not**
+> blind-replace the old version string in that file — unrelated dependencies can
+> sit at the same version number (at 0.11.2 the crate `zerovec-derive` did).
+> Anchor on the `name = "beads-server"` line.
 
 The package-manager manifests (Scoop, Homebrew, winget) are refreshed
 automatically from the git tag — do **not** hand-edit them.
@@ -65,6 +73,14 @@ entering the version (e.g. `v0.12.0`).
 3. **winget** job (Windows): downloads `wingetcreate` and runs
    `wingetcreate update weselow.beads-web` to open a version-bump PR against
    `microsoft/winget-pkgs` (skipped if `WINGET_TOKEN` is unset).
+
+> **A red winget job does not mean a failed release.** `wingetcreate update`
+> only works once the package exists in the catalog, so until the first
+> submission PR is merged this job fails with
+> `repos/microsoft/winget-pkgs/contents/manifests/w/weselow/beads-web was not
+> found`. It runs after `release`, so the GitHub Release, Scoop, and Homebrew are
+> already published by then and are unaffected. Nothing to fix — just don't
+> re-run the release on account of it.
 
 Separately, `.github/workflows/ci.yml` runs on every push to `main` and keeps the
 Nix `npmDepsHash` current, auto-committing the refreshed hash when it drifts.
@@ -119,4 +135,5 @@ asks (`@microsoft-github-policy-service agree`).
   locally before tagging. On Windows `cargo test` (full) hangs because the
   `memory_bd` integration test starts Dolt — use `cargo test --lib`.
 - **Version duplication.** The version is repeated in `package.json`,
-  `server/Cargo.toml`, and `flake.nix` with no automated consistency check.
+  `server/Cargo.toml`, `server/Cargo.lock`, and `flake.nix` (twice) with no
+  automated consistency check.
