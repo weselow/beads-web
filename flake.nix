@@ -22,7 +22,7 @@
 
           frontend = pkgs.buildNpmPackage {
             pname = "beads-web-frontend";
-            version = "0.11.2";
+            version = "0.12.0";
             src = ./.;
 
             nodejs = pkgs.nodejs_22;
@@ -41,7 +41,7 @@
         {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "beads-web";
-            version = "0.11.2";
+            version = "0.12.0";
             src = ./.;
 
             cargoLock.lockFile = ./server/Cargo.lock;
