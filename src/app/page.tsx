@@ -289,7 +289,7 @@ export default function ProjectsPage() {
           </a>
           <span className="text-t-faint" aria-hidden="true">·</span>
           <a
-            href="https://github.com/steveyegge/beads"
+            href="https://github.com/gastownhall/beads"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-sm text-t-muted transition-colors hover:text-t-secondary"

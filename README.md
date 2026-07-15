@@ -106,7 +106,7 @@ Latte, Frappe, Macchiato, and Mocha are available from the theme switcher.
 
 ### Prerequisites
 
-- [Beads CLI](https://github.com/steveyegge/beads) (`bd`) installed and available in PATH
+- [Beads CLI](https://github.com/gastownhall/beads) (`bd`) installed and available in PATH
 
 ### Download
 
@@ -167,7 +167,7 @@ Open http://localhost:3008. The frontend is embedded in the binary — no Node.j
 
 ## Development
 
-Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/), and the [Beads CLI](https://github.com/steveyegge/beads) (`bd`) in PATH.
+Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/), and the [Beads CLI](https://github.com/gastownhall/beads) (`bd`) in PATH.
 
 ```bash
 git clone https://github.com/weselow/beads-web.git
@@ -235,7 +235,7 @@ A: Click "Add Project" on the dashboard. Browse to your project folder or enter 
 ## Credits
 
 - [Beads-Kanban-UI](https://github.com/AvivK5498/Beads-Kanban-UI) by Aviv Kaplan — original project
-- [beads](https://github.com/steveyegge/beads) by Steve Yegge — git-native task tracking
+- [beads](https://github.com/gastownhall/beads) by Steve Yegge — git-native task tracking
 - [Claude Protocol](https://github.com/weselow/claude-protocol) — orchestration framework (works great together)
 
 ## License

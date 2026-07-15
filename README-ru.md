@@ -103,7 +103,7 @@ Beads Web даёт вам Kanban-доску в реальном времени, 
 
 ### Требования
 
-- [Beads CLI](https://github.com/steveyegge/beads) (`bd`) установлен и доступен в PATH
+- [Beads CLI](https://github.com/gastownhall/beads) (`bd`) установлен и доступен в PATH
 
 ### Скачать
 
@@ -162,7 +162,7 @@ beads-web-win-x64.exe
 
 ## Разработка
 
-Требования: Node.js 20+, [Rust toolchain](https://rustup.rs/) и [Beads CLI](https://github.com/steveyegge/beads) (`bd`) в PATH.
+Требования: Node.js 20+, [Rust toolchain](https://rustup.rs/) и [Beads CLI](https://github.com/gastownhall/beads) (`bd`) в PATH.
 
 ```bash
 git clone https://github.com/weselow/beads-web.git
@@ -230,7 +230,7 @@ cargo build --release         # бинарник → server/target/release/beads
 ## Благодарности
 
 - [Beads-Kanban-UI](https://github.com/AvivK5498/Beads-Kanban-UI) от Aviv Kaplan — оригинальный проект
-- [beads](https://github.com/steveyegge/beads) от Steve Yegge — git-нативный трекинг задач
+- [beads](https://github.com/gastownhall/beads) от Steve Yegge — git-нативный трекинг задач
 - [Claude Protocol](https://github.com/weselow/claude-protocol) — фреймворк оркестрации (отлично работает в связке)
 
 ## Лицензия

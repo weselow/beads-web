@@ -29,7 +29,7 @@ class BeadsWeb < Formula
   def caveats
     <<~EOS
       beads-web needs the Beads CLI (bd) on your PATH:
-        https://github.com/steveyegge/beads
+        https://github.com/gastownhall/beads
       Run `beads-web` and open http://localhost:3008
     EOS
   end

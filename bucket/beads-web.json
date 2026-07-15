@@ -10,7 +10,7 @@
     },
     "bin": "beads-web.exe",
     "notes": [
-        "beads-web needs the Beads CLI (bd) on your PATH: https://github.com/steveyegge/beads",
+        "beads-web needs the Beads CLI (bd) on your PATH: https://github.com/gastownhall/beads",
         "Run 'beads-web' and open http://localhost:3008"
     ],
     "checkver": {

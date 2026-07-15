@@ -107,7 +107,7 @@ pub async fn bd_command(Json(req): Json<BdCommandRequest>) -> impl IntoResponse 
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({
-                    "error": "bd CLI not found. Install beads (https://github.com/steveyegge/beads) or add bd to PATH."
+                    "error": "bd CLI not found. Install beads (https://github.com/gastownhall/beads) or add bd to PATH."
                 })),
             ).into_response();
         }

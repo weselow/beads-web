@@ -93,7 +93,7 @@ pub fn find_bd() -> Option<&'static PathBuf> {
 
         tracing::warn!(
             "bd CLI not found. Searched PATH and: {}. \
-             Install bd (https://github.com/steveyegge/beads) or add it to PATH.",
+             Install bd (https://github.com/gastownhall/beads) or add it to PATH.",
             candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
         );
         None

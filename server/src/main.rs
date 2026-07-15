@@ -153,7 +153,7 @@ async fn main() {
         }
     } else {
         tracing::warn!("⚠ bd CLI not found — beads read/write will not work for filesystem projects");
-        tracing::warn!("  Install: https://github.com/steveyegge/beads");
+        tracing::warn!("  Install: https://github.com/gastownhall/beads");
     }
 
     // Initialize version check cache

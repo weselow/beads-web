@@ -101,7 +101,7 @@ The more specific the LEARNED comment, the more useful it is next time.
 - Dolt direct SQL integration working
 - Windows compatibility fixed (multi-drive paths, validation)
 - GitHub Releases CI configured (`.github/workflows/release.yml`) — cross-platform binaries on tag push
-- Listed in [beads COMMUNITY_TOOLS.md](https://github.com/steveyegge/beads/blob/main/docs/COMMUNITY_TOOLS.md)
+- Listed in [beads community-tools.md](https://github.com/gastownhall/beads/blob/main/docs/community-tools.md)
 
 ## Distribution
 
