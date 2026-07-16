@@ -175,13 +175,32 @@ impl DoltManager {
 
         // Insert parent-child dependency if parent specified
         if let Some(parent) = parent_id {
+            // The target column was renamed in bd 1.1.0 — resolve it from the schema.
+            let schema = dependency_schema(&mut conn, db_name).await?;
+
+            // `created_by` is NOT NULL with no default in both schemas.
+            let mut dep_columns = vec!["issue_id", schema.depends_on.as_str(), "type", "created_by"];
+            let mut dep_values = vec![":child", ":parent", "'parent-child'", "'web-ui'"];
+            // bd 1.1.x keys the table on a char(36) `id` with no default, so an
+            // omitted id would collide on the second insert. bd 1.0.x has no such column.
+            if schema.has_id {
+                dep_columns.push("id");
+                dep_values.push(":dep_id");
+            }
+
             let dep_query = format!(
-                "INSERT INTO `{}`.dependencies (issue_id, depends_on_id, `type`) VALUES (:child, :parent, 'parent-child')",
-                db_name
+                "INSERT INTO `{}`.dependencies ({}) VALUES ({})",
+                db_name,
+                dep_columns.iter().map(|c| format!("`{}`", c)).collect::<Vec<_>>().join(", "),
+                dep_values.join(", "),
             );
             conn.exec_drop(
                 &dep_query,
-                mysql_async::params! { "child" => id, "parent" => parent },
+                mysql_async::params! {
+                    "child" => id,
+                    "parent" => parent,
+                    "dep_id" => uuid::Uuid::new_v4().to_string(),
+                },
             ).await.map_err(|e| DoltError::QueryFailed(format!("dependency: {}", e)))?;
         }
 
@@ -459,15 +478,62 @@ async fn merge_comments(
     Ok(beads)
 }
 
+/// Layout of the `dependencies` table, which differs across bd versions.
+///
+/// bd 1.1.0 migrated the schema, so the shipped binary has to cope with both:
+/// - bd 1.0.x: `depends_on_id NOT NULL`, primary key `(issue_id, depends_on_id)`.
+/// - bd 1.1.x: `depends_on_id` split into nullable `depends_on_issue_id` /
+///   `depends_on_wisp_id` / `depends_on_external` (exactly one is set), plus a
+///   `char(36)` `id` primary key with no default.
+struct DependencySchema {
+    /// Column holding the dependency target issue.
+    depends_on: String,
+    /// Whether the table has the bd 1.1.x `id` primary key.
+    has_id: bool,
+}
+
+/// Detects the `dependencies` table layout from the live schema.
+///
+/// A plain rename would break users still on bd 1.0.x, so the column names are
+/// resolved at runtime instead of hardcoded.
+async fn dependency_schema(
+    conn: &mut mysql_async::Conn,
+    db_name: &str,
+) -> Result<DependencySchema, DoltError> {
+    let cols: Vec<String> = conn.exec_map(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
+         WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'dependencies'",
+        mysql_async::params! { "db" => db_name },
+        |col_name: String| col_name,
+    ).await.map_err(|e| DoltError::QueryFailed(format!("dependencies schema: {}", e)))?;
+
+    // Prefer the bd 1.1.x name if both are somehow present.
+    let depends_on = ["depends_on_issue_id", "depends_on_id"]
+        .into_iter()
+        .find(|candidate| cols.iter().any(|got| got == candidate))
+        .ok_or_else(|| DoltError::QueryFailed(format!(
+            "dependencies: neither `depends_on_issue_id` (bd 1.1.x) nor \
+             `depends_on_id` (bd 1.0.x) found in `{}`",
+            db_name
+        )))?
+        .to_string();
+
+    Ok(DependencySchema {
+        has_id: cols.iter().any(|c| c == "id"),
+        depends_on,
+    })
+}
+
 /// Queries dependencies and merges parent/blocking/related into beads.
 async fn merge_dependencies(
     conn: &mut mysql_async::Conn,
     db_name: &str,
     beads: &mut [Bead],
 ) -> Result<(), DoltError> {
+    let schema = dependency_schema(conn, db_name).await?;
     let query = format!(
-        "SELECT issue_id, depends_on_id, `type` FROM `{}`.dependencies",
-        db_name
+        "SELECT issue_id, `{}` AS depends_on, `type` FROM `{}`.dependencies",
+        schema.depends_on, db_name
     );
     let rows: Vec<Row> = conn.query(&query).await
         .map_err(|e| DoltError::QueryFailed(format!("dependencies: {}", e)))?;
@@ -478,7 +544,12 @@ async fn merge_dependencies(
 
     for row in &rows {
         let issue_id = get_str(row, "issue_id");
-        let depends_on = get_str(row, "depends_on_id");
+        let depends_on = get_str(row, "depends_on");
+        // On bd 1.1.x a row may instead target a wisp or an external ref, leaving
+        // depends_on_issue_id NULL — there is no bead on the board to link to.
+        if depends_on.is_empty() {
+            continue;
+        }
         match get_str(row, "type").as_str() {
             "parent-child" | "parent" => { parent_map.insert(issue_id, depends_on); }
             "relates-to" | "related" => { related_map.entry(issue_id).or_default().push(depends_on); }
