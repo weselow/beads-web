@@ -451,10 +451,19 @@ chmod +x "{exe_name}"
 # Start new server
 PORT=$PORT ./{exe_name} &
 NEW_PID=$!
-sleep 3
 
-# Health check
-if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+# Health check: poll once per second for up to 30 attempts.
+# The new server needs ~3-4s to bind its port (a ~2s Dolt-detection
+# timeout at startup dominates), so a single check would lose the race.
+healthy=0
+i=0
+while [ $i -lt 30 ]; do
+    curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1 && {{ healthy=1; break; }}
+    sleep 1
+    i=$((i+1))
+done
+
+if [ $healthy -eq 1 ]; then
     echo "Update successful! New server running (PID $NEW_PID)"
     rm -f "{exe_name}.old"
 else
@@ -524,21 +533,31 @@ rename "{new_name}" "{exe_name}"
 echo Starting new server...
 set PORT=%PORT%
 start /B "" "{exe_name}"
-timeout /t 3 /nobreak >nul
 
+rem Health check: poll once per second for up to 30 attempts.
+rem The new server needs ~3-4s to bind its port (a ~2s Dolt-detection
+rem timeout at startup dominates), so a single check would lose the race.
+set /a tries=0
+:health_loop
+timeout /t 1 /nobreak >nul
 curl -sf "http://localhost:%PORT%/api/health" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo Update successful!
-    del /f "{exe_name}.old" 2>nul
-) else (
-    echo Health check failed, rolling back...
-    taskkill /F /IM "{exe_name}" 2>nul
-    del /f "{exe_name}" 2>nul
-    rename "{exe_name}.old" "{exe_name}"
-    set PORT=%PORT%
-    start /B "" "{exe_name}"
-)
+if %errorlevel% equ 0 goto health_ok
+set /a tries+=1
+if %tries% lss 30 goto health_loop
 
+echo Health check failed, rolling back...
+taskkill /F /IM "{exe_name}" 2>nul
+del /f "{exe_name}" 2>nul
+rename "{exe_name}.old" "{exe_name}"
+set PORT=%PORT%
+start /B "" "{exe_name}"
+goto cleanup
+
+:health_ok
+echo Update successful!
+del /f "{exe_name}.old" 2>nul
+
+:cleanup
 rem Self-delete
 (goto) 2>nul & del /f "%~f0"
 "#
@@ -638,5 +657,65 @@ mod tests {
     #[test]
     fn test_is_newer_major_version_bump() {
         assert!(is_newer("2.0.0", "1.99.99"));
+    }
+
+    // ── updater script generation (health-check poll loop) ──────────────
+
+    #[test]
+    fn test_windows_update_script_uses_poll_loop() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let current_exe = dir.path().join("beads-web.exe");
+        let new_binary = dir.path().join("beads-server-new.exe");
+
+        let script_path =
+            generate_windows_update_script(dir.path(), &current_exe, &new_binary, 4242, "3008")
+                .expect("generate windows script");
+        let content = std::fs::read_to_string(&script_path).expect("read windows script");
+
+        // Poll loop present.
+        assert!(
+            content.contains(":health_loop"),
+            "windows script must contain a :health_loop label, got:\n{content}"
+        );
+        assert!(
+            content.contains("if %tries% lss 30"),
+            "windows script must retry up to 30 times, got:\n{content}"
+        );
+        assert!(
+            content.contains(":health_ok"),
+            "windows script must have a :health_ok success branch, got:\n{content}"
+        );
+        // Old single-shot pattern (fixed 3s sleep then one check) must be gone.
+        assert!(
+            !content.contains("timeout /t 3 /nobreak"),
+            "windows script must NOT use the old fixed 3s sleep, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_unix_update_script_uses_poll_loop() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let current_exe = dir.path().join("beads-web");
+        let new_binary = dir.path().join("beads-server-new");
+
+        let script_path =
+            generate_unix_update_script(dir.path(), &current_exe, &new_binary, 4242, "3008")
+                .expect("generate unix script");
+        let content = std::fs::read_to_string(&script_path).expect("read unix script");
+
+        // Poll loop present.
+        assert!(
+            content.contains("while [ $i -lt 30 ]"),
+            "unix script must poll up to 30 times, got:\n{content}"
+        );
+        assert!(
+            content.contains("healthy=1"),
+            "unix script must set a healthy flag on success, got:\n{content}"
+        );
+        // Old single-shot pattern (fixed `sleep 3` then one check) must be gone.
+        assert!(
+            !content.contains("\nsleep 3\n"),
+            "unix script must NOT use the old fixed `sleep 3`, got:\n{content}"
+        );
     }
 }
