@@ -1,41 +1,92 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import { Download, Loader2, RefreshCw, X } from "lucide-react";
 
 import * as api from "@/lib/api";
-import { apiUrl } from "@/lib/api-base";
 
 type UpdateState = "idle" | "downloading" | "restarting" | "error";
 
-export function UpdateBanner() {
+const RECHECK_INTERVAL_MS = 3600_000;
+/** A tab switch re-checks the version at most this often. */
+const VISIBLE_RECHECK_MIN_GAP_MS = 30_000;
+/** The old server exits ~2s after answering POST /api/update. */
+const RESTART_GRACE_MS = 3000;
+const RESTART_POLL_MS = 1000;
+const RESTART_MAX_ATTEMPTS = 20;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Polls /api/version/check until the server reports `target` as its running
+ * version. Any answer before that may still come from the old server, so a
+ * mere response is not enough. Gives up after RESTART_MAX_ATTEMPTS.
+ */
+async function waitForVersion(target: string | null): Promise<void> {
+  await sleep(RESTART_GRACE_MS);
+  for (let i = 0; i < RESTART_MAX_ATTEMPTS; i++) {
+    if (i > 0) await sleep(RESTART_POLL_MS);
+    try {
+      const data = await api.version.check();
+      if (data.current === target) return;
+    } catch {
+      // Server is down while the binary is replaced — keep polling
+    }
+  }
+  console.warn(
+    `Update: server did not report v${target} after ${RESTART_MAX_ATTEMPTS} attempts, reloading anyway`
+  );
+}
+
+/**
+ * Version info, checked on mount, every hour, and when the tab becomes
+ * visible again — so a tab opened before an update stops offering it.
+ */
+function useVersionInfo() {
   const [info, setInfo] = useState<api.VersionCheckResponse | null>(null);
+  const mountedRef = useRef(true);
+  const lastCheckRef = useRef(0);
+
+  const refresh = useCallback(async () => {
+    lastCheckRef.current = Date.now();
+    try {
+      const data = await api.version.check();
+      if (mountedRef.current) setInfo(data);
+    } catch {
+      // Silently ignore — version check is non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastCheckRef.current < VISIBLE_RECHECK_MIN_GAP_MS) return;
+      refresh();
+    };
+
+    refresh();
+    const interval = setInterval(refresh, RECHECK_INTERVAL_MS);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refresh]);
+
+  return { info, refresh };
+}
+
+export function UpdateBanner() {
+  const { info, refresh } = useVersionInfo();
   const [dismissed, setDismissed] = useState(false);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-
-    const check = async () => {
-      try {
-        const data = await api.version.check();
-        if (mounted) setInfo(data);
-      } catch {
-        // Silently ignore — version check is non-critical
-      }
-    };
-
-    check();
-    const interval = setInterval(check, 3600_000); // Re-check every hour
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
   const handleUpdate = useCallback(async () => {
+    const target = info?.latest ?? null;
     setUpdateState("downloading");
     setErrorMessage(null);
 
@@ -46,33 +97,21 @@ export function UpdateBanner() {
         setErrorMessage(result.error);
         return;
       }
+      if (result.status === "up_to_date") {
+        // This tab was stale: the server already runs the latest version
+        await refresh();
+        setUpdateState("idle");
+        return;
+      }
 
       setUpdateState("restarting");
-
-      // Wait for server to restart, then reload
-      setTimeout(() => {
-        const checkServer = async () => {
-          for (let i = 0; i < 20; i++) {
-            try {
-              await fetch(apiUrl("/api/health"), {
-                signal: AbortSignal.timeout(2000),
-              });
-              window.location.reload();
-              return;
-            } catch {
-              await new Promise((r) => setTimeout(r, 1000));
-            }
-          }
-          // After 20 attempts, reload anyway
-          window.location.reload();
-        };
-        checkServer();
-      }, 3000);
+      await waitForVersion(target);
+      window.location.reload();
     } catch (err) {
       setUpdateState("error");
       setErrorMessage(err instanceof Error ? err.message : "Update failed");
     }
-  }, []);
+  }, [info, refresh]);
 
   if (!info?.update_available || dismissed) return null;
 

@@ -215,10 +215,53 @@ fn current_platform_asset() -> String {
     }
 }
 
+/// What POST /api/update should do for a given release check.
+#[derive(Debug, PartialEq, Eq)]
+enum UpdatePlan {
+    /// The running version is already the latest (or the latest is unknown).
+    UpToDate { current: String },
+    /// A newer release exists, but has no binary for this platform.
+    NoAsset,
+    /// A newer release exists: download this binary.
+    Download { asset_url: String },
+}
+
+/// Decides whether to download, comparing the release against the running
+/// `current` version with the same `is_newer` used by `version_check` —
+/// never trusting the cached `update_available` flag alone.
+fn plan_update(check: &VersionCheckResponse, current: &str) -> UpdatePlan {
+    let newer = check
+        .latest
+        .as_deref()
+        .is_some_and(|latest| is_newer(latest, current));
+    if !newer {
+        return UpdatePlan::UpToDate {
+            current: current.to_string(),
+        };
+    }
+    match &check.asset_url {
+        Some(url) => UpdatePlan::Download {
+            asset_url: url.clone(),
+        },
+        None => UpdatePlan::NoAsset,
+    }
+}
+
+/// Response body when there is nothing to install. It carries no `error`
+/// on purpose: a page from an older release treats any non-error answer as
+/// "restarting" and reloads, which is what a stale tab needs.
+fn up_to_date_body(current: &str) -> serde_json::Value {
+    serde_json::json!({
+        "status": "up_to_date",
+        "message": format!("Already up to date (v{})", current),
+    })
+}
+
 /// POST /api/update
 ///
 /// Downloads the latest release binary and creates an ephemeral updater script.
 /// The server exits after spawning the updater, which replaces the binary and restarts.
+/// Does nothing when the running version is already the latest.
 pub async fn perform_update(
     axum::extract::Extension(cache): axum::extract::Extension<VersionCache>,
 ) -> impl IntoResponse {
@@ -238,16 +281,13 @@ pub async fn perform_update(
         }
     };
 
-    if !check.update_available {
-        return (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "up_to_date"})),
-        );
-    }
-
-    let asset_url = match check.asset_url {
-        Some(url) => url,
-        None => {
+    let asset_url = match plan_update(&check, CURRENT_VERSION) {
+        UpdatePlan::Download { asset_url } => asset_url,
+        UpdatePlan::UpToDate { current } => {
+            info!("Update requested, but v{} is already the latest", current);
+            return (StatusCode::OK, Json(up_to_date_body(&current)));
+        }
+        UpdatePlan::NoAsset => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(
@@ -657,6 +697,74 @@ mod tests {
     #[test]
     fn test_is_newer_major_version_bump() {
         assert!(is_newer("2.0.0", "1.99.99"));
+    }
+
+    // ── plan_update: whether POST /api/update should download ───────────
+
+    fn check_with(latest: Option<&str>, asset_url: Option<&str>) -> VersionCheckResponse {
+        VersionCheckResponse {
+            current: "0.13.0".to_string(),
+            latest: latest.map(str::to_string),
+            update_available: true, // stale flag must not matter
+            download_url: None,
+            release_notes: None,
+            asset_url: asset_url.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn test_plan_update_same_version_is_up_to_date() {
+        let check = check_with(Some("0.13.0"), Some("https://x/bin"));
+        assert_eq!(
+            plan_update(&check, "0.13.0"),
+            UpdatePlan::UpToDate {
+                current: "0.13.0".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_plan_update_older_release_is_up_to_date() {
+        let check = check_with(Some("0.12.4"), Some("https://x/bin"));
+        assert!(matches!(
+            plan_update(&check, "0.13.0"),
+            UpdatePlan::UpToDate { .. }
+        ));
+    }
+
+    #[test]
+    fn test_plan_update_newer_release_downloads_asset() {
+        let check = check_with(Some("0.14.0"), Some("https://x/bin"));
+        assert_eq!(
+            plan_update(&check, "0.13.0"),
+            UpdatePlan::Download {
+                asset_url: "https://x/bin".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_plan_update_newer_release_without_asset() {
+        let check = check_with(Some("0.14.0"), None);
+        assert_eq!(plan_update(&check, "0.13.0"), UpdatePlan::NoAsset);
+    }
+
+    #[test]
+    fn test_plan_update_unknown_latest_is_up_to_date() {
+        // GitHub unreachable: nothing known to install, never download.
+        let check = check_with(None, Some("https://x/bin"));
+        assert!(matches!(
+            plan_update(&check, "0.13.0"),
+            UpdatePlan::UpToDate { .. }
+        ));
+    }
+
+    #[test]
+    fn test_up_to_date_body_has_message_and_no_error() {
+        let body = up_to_date_body("0.13.0");
+        assert_eq!(body["status"], "up_to_date");
+        assert_eq!(body["message"], "Already up to date (v0.13.0)");
+        assert!(body.get("error").is_none());
     }
 
     // ── updater script generation (health-check poll loop) ──────────────
