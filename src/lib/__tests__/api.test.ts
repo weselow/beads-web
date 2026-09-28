@@ -96,6 +96,26 @@ describe('api.beads', () => {
       expect(url).toContain('/api/beads?path=');
       expect(url).toContain(encodeURIComponent('/test/path'));
     });
+
+    it('waits up to 60 s, since the first read of a large project takes 10-25 s', async () => {
+      const timeout = vi.spyOn(AbortSignal, 'timeout');
+      mockFetch.mockResolvedValue(mockResponse({ beads: [] }));
+
+      await api.beads.read('/test/path');
+
+      expect(timeout).toHaveBeenCalledWith(60000);
+      expect(timeout).not.toHaveBeenCalledWith(10000);
+      expect(mockFetch.mock.calls[0][1].signal).toBe(timeout.mock.results[0].value);
+    });
+
+    it('leaves other calls on the shared 10 s limit', async () => {
+      const timeout = vi.spyOn(AbortSignal, 'timeout');
+      mockFetch.mockResolvedValue(mockResponse({ success: true }));
+
+      await api.beads.update({ path: '/p', id: 'b-1', status: 'open' });
+
+      expect(timeout).toHaveBeenCalledWith(10000);
+    });
   });
 });
 

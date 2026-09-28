@@ -8,6 +8,7 @@
 
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -487,10 +488,13 @@ impl JournalCache {
 
     /// Returns the project's beads, catching up with the journal first.
     /// `full` forces a complete re-read.
+    ///
+    /// Dropping this future mid-way is safe: a catch-up changes the copy only
+    /// after the whole tail is read, and a full read runs in its own task
+    /// (see [`store_detached`]).
     pub async fn read(&self, project_path: &Path, full: bool) -> Result<JournalRead, String> {
         let arrived = Instant::now();
-        let slot = self.slot(project_path);
-        let mut guard = slot.lock().await;
+        let mut guard = self.slot(project_path).lock_owned().await;
 
         if let Some(cached) = guard.as_mut() {
             let stale = full || cached.baseline_at.elapsed() >= REBASELINE_AFTER;
@@ -505,10 +509,59 @@ impl JournalCache {
         }
 
         let hint = guard.as_ref().map_or(0, |c| c.seq);
-        let fresh = baseline(project_path, hint).await?;
-        let read = snapshot(&fresh);
-        *guard = Some(fresh);
-        Ok(read)
+        let path = project_path.to_path_buf();
+        let work = async move { baseline(&path, hint).await };
+        store_detached(guard, project_path.to_path_buf(), work).await
+    }
+}
+
+type SlotGuard = tokio::sync::OwnedMutexGuard<Option<CachedProject>>;
+
+/// Runs a full read in a task of its own, which keeps the project's lock and
+/// stores the fresh copy in the slot itself.
+///
+/// A full read of a large project takes 10-25 s. When the page gives up on
+/// the request, axum drops this future — but not the task, so the read still
+/// finishes and the next request gets the copy instead of starting over.
+/// A panic in the task arrives here as an error; the old copy stays.
+async fn store_detached<F>(
+    mut guard: SlotGuard,
+    project_path: PathBuf,
+    work: F,
+) -> Result<JournalRead, String>
+where
+    F: Future<Output = Result<CachedProject, String>> + Send + 'static,
+{
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let outcome = work.await.map(|fresh| {
+            let read = snapshot(&fresh);
+            *guard = Some(fresh);
+            read
+        });
+        drop(guard);
+        if let Err(outcome) = reply.send(outcome) {
+            report_unclaimed(&project_path, outcome);
+        }
+    });
+    answer
+        .await
+        .map_err(|_| "journal baseline task stopped unexpectedly".to_string())?
+}
+
+/// Logs the result of a full read whose request is gone: nobody else will.
+fn report_unclaimed(project_path: &Path, outcome: Result<JournalRead, String>) {
+    match outcome {
+        Ok((beads, _)) => tracing::info!(
+            project = %project_path.display(),
+            beads = beads.len(),
+            "journal baseline finished after its request was gone, copy kept"
+        ),
+        Err(error) => tracing::warn!(
+            project = %project_path.display(),
+            error,
+            "journal baseline failed after its request was gone"
+        ),
     }
 }
 
@@ -830,6 +883,81 @@ mod tests {
         assert_eq!(cache.slots.lock().unwrap().len(), 2);
         cache.forget(Path::new("/p/unknown"));
         assert_eq!(cache.slots.lock().unwrap().len(), 2);
+    }
+
+    fn cached_with(ids: &[&str]) -> CachedProject {
+        let beads = ids
+            .iter()
+            .map(|id| bead(&format!(r#"{{"id":"{id}","title":"T","status":"open"}}"#)))
+            .collect();
+        CachedProject {
+            copy: ProjectCopy::new(beads),
+            seq: 1,
+            baseline_at: Instant::now(),
+            refreshed_at: Instant::now(),
+        }
+    }
+
+    fn stored_ids(slot: &Option<CachedProject>) -> Vec<String> {
+        slot.as_ref()
+            .map(|c| c.copy.beads().iter().map(|b| b.id.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn dropped_request_does_not_cancel_the_baseline() {
+        let slot: Slot = Arc::default();
+        let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+        let work = async move {
+            let _ = finished.await;
+            Ok(cached_with(&["t-1", "t-2"]))
+        };
+        let guard = slot.clone().lock_owned().await;
+        let request = store_detached(guard, PathBuf::from("/p/a"), work);
+
+        // The page gives up while bd is still reading: the request is dropped.
+        let gave_up = tokio::time::timeout(Duration::from_millis(50), request).await;
+        assert!(gave_up.is_err(), "the baseline was still running");
+
+        finish.send(()).expect("baseline still waiting");
+        let stored = tokio::time::timeout(Duration::from_secs(5), slot.lock())
+            .await
+            .expect("the baseline task releases the lock");
+        assert_eq!(stored_ids(&stored), vec!["t-1", "t-2"]);
+    }
+
+    #[tokio::test]
+    async fn waiting_request_gets_the_baseline_result() {
+        let slot: Slot = Arc::default();
+        let guard = slot.clone().lock_owned().await;
+        let work = async { Ok(cached_with(&["t-1"])) };
+        let (beads, comments) = store_detached(guard, PathBuf::from("/p/a"), work)
+            .await
+            .expect("baseline succeeds");
+        assert_eq!(beads.len(), 1);
+        assert_eq!(comments, 0);
+        assert_eq!(stored_ids(&*slot.lock().await), vec!["t-1"]);
+    }
+
+    #[tokio::test]
+    async fn failed_or_panicking_baseline_keeps_the_old_copy() {
+        let slot: Slot = Arc::new(tokio::sync::Mutex::new(Some(cached_with(&["old"]))));
+
+        let guard = slot.clone().lock_owned().await;
+        let failed = store_detached(guard, PathBuf::from("/p/a"), async {
+            Err("bd failed".to_string())
+        })
+        .await;
+        assert_eq!(failed.err().as_deref(), Some("bd failed"));
+        assert_eq!(stored_ids(&*slot.lock().await), vec!["old"]);
+
+        let guard = slot.clone().lock_owned().await;
+        let panicked = store_detached(guard, PathBuf::from("/p/a"), async {
+            panic!("baseline bug");
+        })
+        .await;
+        assert!(panicked.is_err(), "a panic becomes an error, not a crash");
+        assert_eq!(stored_ids(&*slot.lock().await), vec!["old"]);
     }
 
     #[test]
