@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUILTIN_STATUSES, getStatusCategory, isDoneStatus } from '@/lib/statuses';
+import { BUILTIN_STATUSES, getStatusBadgeClasses, getStatusCategory, isDoneStatus } from '@/lib/statuses';
 import type { StatusInfo } from '@/types';
 
 const statuses: StatusInfo[] = [
@@ -45,5 +45,19 @@ describe('isDoneStatus', () => {
     expect(isDoneStatus('open', statuses)).toBe(false);
     expect(isDoneStatus('inreview', statuses)).toBe(false);
     expect(isDoneStatus('mystery', statuses)).toBe(false);
+  });
+});
+
+describe('getStatusBadgeClasses', () => {
+  it('colours a warning mark orange, like a blocked bead', () => {
+    expect(getStatusBadgeClasses('warning')).toBe('bg-blocked-accent/15 text-blocked-accent border-blocked-accent/30');
+  });
+
+  it('greys out a muted mark', () => {
+    expect(getStatusBadgeClasses('muted')).toBe('bg-t-muted/15 text-t-tertiary border-t-muted/30');
+  });
+
+  it('colours an info mark blue', () => {
+    expect(getStatusBadgeClasses('info')).toBe('bg-info/15 text-info border-info/30');
   });
 });

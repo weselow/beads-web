@@ -7,9 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 import { formatBeadId, formatWorktreePath, isBlocked, truncate } from "@/lib/bead-utils";
 import { getIssueTypeMeta } from "@/lib/issue-types";
-import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
+import { BUILTIN_STATUSES, getStatusBadgeClasses, isDoneStatus } from "@/lib/statuses";
 import { cn } from "@/lib/utils";
-import type { Bead, WorktreeStatus, PRStatus, StatusBadgeInfo, StatusInfo } from "@/types";
+import type { Bead, WorktreeStatus, PRStatus, StatusInfo } from "@/types";
 
 export interface BeadCardProps {
   bead: Bead;
@@ -134,21 +134,6 @@ function getPRChecksDisplay(prStatus: PRStatus): { icon: React.ReactNode; text: 
  */
 function getTypeLabel(bead: Bead): string {
   return getIssueTypeMeta(bead.issue_type).label;
-}
-
-/**
- * Get badge variant class for status badges based on severity.
- * warning = orange (blocked, unknown), muted = gray (deferred), info = blue (hooked/waiting)
- */
-function getStatusBadgeClasses(variant: StatusBadgeInfo['variant']): string {
-  switch (variant) {
-    case 'warning':
-      return 'bg-blocked-accent/15 text-blocked-accent border-blocked-accent/30';
-    case 'muted':
-      return 'bg-t-muted/15 text-t-tertiary border-t-muted/30';
-    case 'info':
-      return 'bg-info/15 text-info border-info/30';
-  }
 }
 
 export function BeadCard({
