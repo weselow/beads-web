@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 
+use super::journal::{self, JournalCache};
 use super::validate_path_security;
 use crate::db::{CachedCounts, Database};
 use crate::dolt::{self, DoltManager};
@@ -105,6 +106,22 @@ pub struct BeadsParams {
     /// Optional ISO 8601 timestamp — only return beads updated after this time.
     /// Used for incremental polling (subsequent fetches after initial full load).
     pub updated_after: Option<String>,
+    /// `full=1` asks for a complete re-read. Only the journal-backed path
+    /// (`source: "cli-journal"`) uses it; the others always read everything
+    /// unless `updated_after` is given.
+    #[serde(default, deserialize_with = "deserialize_flag")]
+    pub full: bool,
+}
+
+/// Accepts `1`, `true`, `yes` or `on` (any case) as true; anything else is false.
+fn deserialize_flag<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    Ok(value.is_some_and(|v| {
+        matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+    }))
 }
 
 /// A dependency relationship in the JSONL file (old format).
@@ -115,9 +132,9 @@ pub struct BeadsParams {
 /// ```
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct LegacyDependency {
-    depends_on_id: String,
+    pub(crate) depends_on_id: String,
     #[serde(rename = "type")]
-    dep_type: String,
+    pub(crate) dep_type: String,
 }
 
 /// A single bead/issue from the JSONL file.
@@ -125,7 +142,7 @@ pub(crate) struct LegacyDependency {
 /// Supports both old and new `bd` CLI formats:
 /// - **Old**: `dependencies` as array of objects with `depends_on_id` and `type`
 /// - **New**: `parent` (string), `dependencies` as array of string IDs, `related` as array of strings
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bead {
     pub id: String,
     pub title: String,
@@ -206,7 +223,7 @@ where
     }
 }
 
-fn deserialize_comment_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+pub(crate) fn deserialize_comment_id<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -242,7 +259,7 @@ where
 }
 
 /// A comment on a bead.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comment {
     #[serde(deserialize_with = "deserialize_comment_id")]
     pub id: String,
@@ -373,7 +390,7 @@ fn count_comments(beads: &[Bead]) -> usize {
 /// The total is deliberately independent of `updated_after`: comments are
 /// always loaded in bulk, while the bead list may be filtered, so the count
 /// stays comparable between an incremental and a full read.
-async fn read_beads_from_cli(
+pub(crate) async fn read_beads_from_cli(
     project_path: &Path,
     updated_after: Option<&str>,
 ) -> Result<(Vec<Bead>, usize), String> {
@@ -567,6 +584,7 @@ const DOLT_PATH_PREFIX: &str = "dolt://";
 pub async fn read_beads(
     Extension(dolt_manager): Extension<Arc<DoltManager>>,
     Extension(db): Extension<Arc<Database>>,
+    Extension(journal_cache): Extension<Arc<JournalCache>>,
     Query(params): Query<BeadsParams>,
 ) -> impl IntoResponse {
     // Normalize Windows backslashes to forward slashes
@@ -675,7 +693,21 @@ pub async fn read_beads(
             }
         }
 
-        // Tier 2: Try bd CLI
+        // Tier 2a: bd CLI through the events journal — a copy kept in memory
+        // and caught up with `bd events tail`, instead of a full `bd export`
+        // on every request. Always the complete list, whatever `updated_after`.
+        if journal::journal_enabled(&project_path) {
+            match journal_cache.read(&project_path, params.full).await {
+                Ok((b, comment_total)) => break 'fallback (b, "cli-journal", Some(comment_total)),
+                Err(e) => {
+                    tracing::warn!(project = %path, error = %e, "events journal read failed, falling back to bd CLI");
+                }
+            }
+        } else {
+            journal_cache.forget(&project_path);
+        }
+
+        // Tier 2b: Try bd CLI
         match read_beads_from_cli(&project_path, params.updated_after.as_deref()).await {
             Ok((b, comment_total)) => {
                 let mode = if params.updated_after.is_some() { "incremental" } else { "full" };
@@ -715,7 +747,13 @@ pub async fn read_beads(
     let beads = post_process_beads(beads);
     upsert_counts_cache(&db, &path, source, &beads);
     let comment_total = cli_comment_total.unwrap_or_else(|| count_comments(&beads));
-    (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": source, "comment_total": comment_total })))
+    let mut body = serde_json::json!({ "beads": beads, "source": source, "comment_total": comment_total });
+    if source == "cli-journal" {
+        // Tells the page this is the whole list, so beads missing from it
+        // were deleted.
+        body["complete"] = serde_json::Value::Bool(true);
+    }
+    (StatusCode::OK, Json(body))
 }
 
 /// Request body for creating a new bead.
@@ -1304,6 +1342,19 @@ pub fn recompute_epic_statuses(issues_path: &Path) -> Result<Vec<String>, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_params(query: &str) -> BeadsParams {
+        let uri: axum::http::Uri = format!("/api/beads?{}", query).parse().unwrap();
+        Query::<BeadsParams>::try_from_uri(&uri).unwrap().0
+    }
+
+    #[test]
+    fn test_beads_params_full_flag() {
+        assert!(!parse_params("path=/p").full);
+        assert!(parse_params("path=/p&full=1").full);
+        assert!(parse_params("path=/p&full=true").full);
+        assert!(!parse_params("path=/p&full=0").full);
+    }
 
     #[test]
     fn test_is_non_issue_record_memory() {

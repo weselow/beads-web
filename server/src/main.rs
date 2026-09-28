@@ -161,6 +161,9 @@ async fn main() {
         tracing::warn!("  Or: npm install -g @beads/bd — then restart beads-web (the installer edits PATH)");
     }
 
+    // In-memory copies of projects that have the bd events journal on
+    let journal_cache = Arc::new(routes::journal::JournalCache::default());
+
     // Initialize version check cache
     let version_cache = routes::version::new_cache();
 
@@ -209,6 +212,7 @@ async fn main() {
         .layer(Extension(version_cache))
         .layer(Extension(database))
         .layer(Extension(dolt_manager))
+        .layer(Extension(journal_cache))
         .layer(cors);
 
     let addr = format!("{}:{}", host, port);
