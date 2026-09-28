@@ -151,12 +151,16 @@ export interface CreateBeadInput {
   parent_id?: string;
 }
 
+// The first full read of a large journal-backed project takes 10-25 s.
+const BEADS_READ_TIMEOUT_MS = 60000;
+
 export const beads = {
   read: async (path: string, updatedAfter?: string) => {
     const params = new URLSearchParams({ path });
     if (updatedAfter) params.set('updated_after', updatedAfter);
     const data = await fetchApi<{ beads: Bead[]; source?: string; comment_total?: number; complete?: boolean }>(
-      `/api/beads?${params}`
+      `/api/beads?${params}`,
+      { signal: AbortSignal.timeout(BEADS_READ_TIMEOUT_MS) }
     );
     BeadsResponseSchema.parse(data);
     return data;
