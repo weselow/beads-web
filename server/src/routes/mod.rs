@@ -12,6 +12,7 @@ pub mod git;
 pub mod journal;
 pub mod memory;
 pub mod projects;
+pub mod statuses;
 pub mod version;
 pub mod watch;
 pub mod worktree;

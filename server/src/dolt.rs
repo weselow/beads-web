@@ -109,6 +109,16 @@ impl DoltManager {
         Ok(beads)
     }
 
+    /// Reads the `status.custom` config value of a database on the central
+    /// Dolt server; `None` when the project has no own statuses.
+    pub async fn read_status_custom(&self, db_name: &str) -> Result<Option<String>, DoltError> {
+        let mut conn = self.pool.get_conn().await
+            .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
+        let value = query_status_custom(&mut conn, db_name).await?;
+        self.available.store(true, Ordering::Relaxed);
+        Ok(value)
+    }
+
     /// Creates a new bead in a Dolt database and commits the change.
     ///
     /// The issue row and the parent link are written inside one SQL
@@ -277,9 +287,8 @@ impl DoltManager {
 
 }
 
-/// Reads beads from a Dolt server on a specific port.
-/// Creates a temporary connection pool to the given port, reads data, then drops it.
-pub async fn read_beads_on_port(port: u16, db_name: &str) -> Result<Vec<Bead>, DoltError> {
+/// Builds a small connection pool to a per-project Dolt server.
+fn port_pool(port: u16) -> Pool {
     let pool_opts = PoolOpts::default()
         .with_constraints(PoolConstraints::new(0, 2).unwrap());
 
@@ -290,7 +299,48 @@ pub async fn read_beads_on_port(port: u16, db_name: &str) -> Result<Vec<Bead>, D
         .pool_opts(pool_opts)
         .into();
 
-    let pool = Pool::new(opts);
+    Pool::new(opts)
+}
+
+/// SQL that reads the project's own statuses (`bd config set status.custom`).
+fn status_custom_query(db_name: &str) -> String {
+    format!(
+        "SELECT `value` FROM `{}`.`config` WHERE `key` = 'status.custom'",
+        db_name.replace('`', "``")
+    )
+}
+
+/// Reads the `status.custom` config value; `None` when the project has none.
+async fn query_status_custom(
+    conn: &mut mysql_async::Conn,
+    db_name: &str,
+) -> Result<Option<String>, DoltError> {
+    conn.query_first::<Option<String>, _>(status_custom_query(db_name))
+        .await
+        .map(Option::flatten)
+        .map_err(|e| DoltError::QueryFailed(e.to_string()))
+}
+
+/// Reads `status.custom` from a Dolt server on a specific port.
+/// Creates a temporary connection pool to the given port, reads, then drops it.
+pub async fn read_status_custom_on_port(port: u16, db_name: &str) -> Result<Option<String>, DoltError> {
+    let pool = port_pool(port);
+    let mut conn = pool.get_conn().await
+        .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
+
+    let result = query_status_custom(&mut conn, db_name).await;
+
+    drop(conn);
+    if let Err(e) = pool.disconnect().await {
+        tracing::warn!("Failed to disconnect temporary pool (port {}): {}", port, e);
+    }
+    result
+}
+
+/// Reads beads from a Dolt server on a specific port.
+/// Creates a temporary connection pool to the given port, reads data, then drops it.
+pub async fn read_beads_on_port(port: u16, db_name: &str) -> Result<Vec<Bead>, DoltError> {
+    let pool = port_pool(port);
     let mut conn = pool.get_conn().await
         .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
 
@@ -309,17 +359,7 @@ pub async fn read_beads_on_port(port: u16, db_name: &str) -> Result<Vec<Bead>, D
 /// Discover the beads database name by connecting to a Dolt server and looking
 /// for a database that has an `issues` table.
 pub async fn discover_database_on_port(port: u16) -> Result<String, DoltError> {
-    let pool_opts = PoolOpts::default()
-        .with_constraints(PoolConstraints::new(0, 2).unwrap());
-
-    let opts: Opts = OptsBuilder::default()
-        .ip_or_hostname(DOLT_HOST)
-        .tcp_port(port)
-        .user(Some(DOLT_USER))
-        .pool_opts(pool_opts)
-        .into();
-
-    let pool = Pool::new(opts);
+    let pool = port_pool(port);
     let mut conn = pool.get_conn().await
         .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
 
@@ -685,6 +725,21 @@ pub fn database_name_for_project(project_path: &Path) -> Option<String> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    // ── status.custom query ─────────────────────────────────────────────
+
+    #[test]
+    fn status_custom_query_quotes_names() {
+        assert_eq!(
+            status_custom_query("beads_x"),
+            "SELECT `value` FROM `beads_x`.`config` WHERE `key` = 'status.custom'"
+        );
+    }
+
+    #[test]
+    fn status_custom_query_escapes_backticks_in_db_name() {
+        assert!(status_custom_query("a`b").starts_with("SELECT `value` FROM `a``b`.`config`"));
+    }
 
     // ── database_name_for_project tests ─────────────────────────────────
 

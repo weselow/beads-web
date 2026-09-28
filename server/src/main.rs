@@ -164,6 +164,9 @@ async fn main() {
     // In-memory copies of projects that have the bd events journal on
     let journal_cache = Arc::new(routes::journal::JournalCache::default());
 
+    // In-memory status lists, one per project, kept for a few minutes
+    let status_cache = Arc::new(routes::statuses::StatusCache::default());
+
     // Initialize version check cache
     let version_cache = routes::version::new_cache();
 
@@ -174,6 +177,7 @@ async fn main() {
         .route("/api/beads", get(routes::beads::read_beads))
         .route("/api/beads/create", post(routes::beads::create_bead_handler))
         .route("/api/beads/update", patch(routes::beads::update_bead_handler))
+        .route("/api/statuses", get(routes::statuses::read_statuses))
         // Dolt endpoints
         .route("/api/dolt/status", get(routes::dolt::dolt_status))
         .route("/api/dolt/databases", get(routes::dolt::dolt_databases))
@@ -213,6 +217,7 @@ async fn main() {
         .layer(Extension(database))
         .layer(Extension(dolt_manager))
         .layer(Extension(journal_cache))
+        .layer(Extension(status_cache))
         .layer(cors);
 
     let addr = format!("{}:{}", host, port);
