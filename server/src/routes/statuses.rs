@@ -526,7 +526,10 @@ mod tests {
 
     #[tokio::test]
     async fn folder_without_beads_is_not_found() {
-        let tmp = tempfile::tempdir().unwrap();
+        // Inside the home folder: on Unix, validate_path_security refuses
+        // anything outside it, and tempdir() lands in /tmp.
+        let home = directories::UserDirs::new().unwrap().home_dir().to_path_buf();
+        let tmp = tempfile::tempdir_in(home).unwrap();
         let (code, Json(body)) = call(&tmp.path().to_string_lossy()).await;
         assert_eq!(code, StatusCode::NOT_FOUND);
         assert!(body["error"].as_str().unwrap().contains(".beads"));
