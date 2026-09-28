@@ -101,9 +101,11 @@ vi.mock('@/hooks/use-worktree-statuses', () => ({
 
 // Stubs that show the read-only flag each write area received.
 function flagStub(testId: string) {
-  function FlagStub({ readOnly, status, children }: { readOnly?: boolean; status?: string; children?: React.ReactNode }) {
+  function FlagStub({ readOnly, status, collapsed, children }: {
+    readOnly?: boolean; status?: string; collapsed?: boolean; children?: React.ReactNode;
+  }) {
     return (
-      <div data-testid={testId} data-read-only={String(readOnly === true)} data-status={status}>
+      <div data-testid={testId} data-read-only={String(readOnly === true)} data-status={status} data-collapsed={collapsed}>
         {children}
       </div>
     );
@@ -152,21 +154,30 @@ describe('Kanban board on an old copy from issues.jsonl', () => {
   });
 });
 
-// TEMPORARY until beads-web-5fk.3, which draws a column per status.
 describe('Kanban board columns', () => {
-  const columnStatuses = () => screen.getAllByTestId('column').map((el) => el.getAttribute('data-status'));
+  const columns = () => screen.getAllByTestId('column');
+  const statusesOf = (els: HTMLElement[]) => els.map((el) => el.getAttribute('data-status'));
 
-  it('draws no In Review column in a project without that status', () => {
+  it('draws a column per status, by group, with pinned left out', () => {
     render(<KanbanBoard />);
 
-    expect(columnStatuses()).toEqual(['open', 'in_progress', 'closed']);
+    expect(statusesOf(columns())).toEqual(['open', 'in_progress', 'blocked', 'hooked', 'deferred', 'closed']);
   });
 
-  it('draws In Review when the project has it as its own status', () => {
+  it('collapses the empty columns other than open, in_progress and closed', () => {
+    render(<KanbanBoard />);
+
+    const collapsed = columns().filter((el) => el.getAttribute('data-collapsed') === 'true');
+    expect(statusesOf(collapsed)).toEqual(['blocked', 'hooked', 'deferred']);
+  });
+
+  it("draws the project's own status after the built-in ones of its group", () => {
     currentStatuses = [...BUILTIN_STATUSES, { name: 'inreview', category: 'wip', builtin: false }];
 
     render(<KanbanBoard />);
 
-    expect(columnStatuses()).toEqual(['open', 'in_progress', 'inreview', 'closed']);
+    expect(statusesOf(columns())).toEqual([
+      'open', 'in_progress', 'blocked', 'hooked', 'inreview', 'deferred', 'closed',
+    ]);
   });
 });

@@ -2,26 +2,36 @@
 
 import { useCallback, useEffect, useState, RefObject } from "react";
 
-import type { Bead, BoardColumnStatus } from "@/types";
+import type { Bead, BoardColumn } from "@/types";
 
 /**
- * Column order for navigation
+ * Letters kept for the three columns every project has, after 'g'
  */
-const COLUMN_ORDER: BoardColumnStatus[] = ["open", "in_progress", "inreview", "closed"];
+const LETTER_SHORTCUTS = new Map<string, string>([
+  ["o", "open"],
+  ["p", "in_progress"],
+  ["c", "closed"],
+]);
 
 /**
- * Column shortcuts for 'g' prefix navigation
+ * Column a key picks after 'g': a letter for open, in progress or closed, or
+ * 1..9 for the columns in board order. `undefined` when the key picks none.
  */
-const COLUMN_SHORTCUTS: Record<string, BoardColumnStatus> = {
-  o: "open",
-  p: "in_progress",
-  r: "inreview",
-  c: "closed",
-};
+export function columnForShortcut(key: string, columnOrder: readonly string[]): string | undefined {
+  const letter = LETTER_SHORTCUTS.get(key.toLowerCase());
+  if (letter !== undefined) return letter;
+  return /^[1-9]$/.test(key) ? columnOrder[Number(key) - 1] : undefined;
+}
+
+/** Column that holds the bead, if any */
+function columnHolding(columns: readonly BoardColumn[], beadId: string): BoardColumn | undefined {
+  return columns.find((c) => c.beads.some((b) => b.id === beadId));
+}
 
 export interface KeyboardNavigationOptions {
   beads: Bead[];
-  beadsByStatus: Record<BoardColumnStatus, Bead[]>;
+  /** The board's columns, in the order they are drawn */
+  columns: readonly BoardColumn[];
   selectedId: string | null;
   onSelect: (bead: Bead) => void;
   onOpen: (bead: Bead) => void;
@@ -32,9 +42,9 @@ export interface KeyboardNavigationOptions {
 
 export interface KeyboardNavigationResult {
   selectedId: string | null;
-  selectedColumnStatus: BoardColumnStatus | null;
+  selectedColumnStatus: string | null;
   setSelectedId: (id: string | null) => void;
-  setSelectedColumnStatus: (status: BoardColumnStatus | null) => void;
+  setSelectedColumnStatus: (status: string | null) => void;
   scrollToSelected: () => void;
 }
 
@@ -49,12 +59,12 @@ export interface KeyboardNavigationResult {
  * - /: Focus search input
  * - g then o: Go to Open column
  * - g then p: Go to In Progress column
- * - g then r: Go to In Review column
- * - g then d: Go to Done column
+ * - g then c: Go to Closed column
+ * - g then 1..9: Go to that column, counting from the left
  */
 export function useKeyboardNavigation({
   beads,
-  beadsByStatus,
+  columns,
   selectedId,
   onSelect,
   onOpen,
@@ -63,7 +73,7 @@ export function useKeyboardNavigation({
   isDetailOpen,
 }: KeyboardNavigationOptions): KeyboardNavigationResult {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(selectedId);
-  const [selectedColumnStatus, setSelectedColumnStatus] = useState<BoardColumnStatus | null>(null);
+  const [selectedColumnStatus, setSelectedColumnStatus] = useState<string | null>(null);
   const [awaitingColumnKey, setAwaitingColumnKey] = useState(false);
 
   // Sync internal state with external selectedId
@@ -76,26 +86,14 @@ export function useKeyboardNavigation({
    */
   const getCurrentColumnBeads = useCallback((): Bead[] => {
     if (selectedColumnStatus) {
-      return beadsByStatus[selectedColumnStatus] || [];
+      return columns.find((c) => c.status === selectedColumnStatus)?.beads ?? [];
     }
     if (!internalSelectedId) {
       // Default to first non-empty column
-      for (const status of COLUMN_ORDER) {
-        if (beadsByStatus[status]?.length > 0) {
-          return beadsByStatus[status];
-        }
-      }
-      return [];
+      return columns.find((c) => c.beads.length > 0)?.beads ?? [];
     }
-    // Find which column contains the selected bead
-    for (const status of COLUMN_ORDER) {
-      const columnBeads = beadsByStatus[status] || [];
-      if (columnBeads.some((b) => b.id === internalSelectedId)) {
-        return columnBeads;
-      }
-    }
-    return beads;
-  }, [internalSelectedId, selectedColumnStatus, beadsByStatus, beads]);
+    return columnHolding(columns, internalSelectedId)?.beads ?? beads;
+  }, [internalSelectedId, selectedColumnStatus, columns, beads]);
 
   /**
    * Get current index of selected bead in its column
@@ -132,23 +130,19 @@ export function useKeyboardNavigation({
         setInternalSelectedId(newBead.id);
         onSelect(newBead);
         // Update column status based on selected bead
-        for (const status of COLUMN_ORDER) {
-          if (beadsByStatus[status]?.some((b) => b.id === newBead.id)) {
-            setSelectedColumnStatus(status);
-            break;
-          }
-        }
+        const column = columnHolding(columns, newBead.id);
+        if (column) setSelectedColumnStatus(column.status);
       }
     },
-    [getCurrentColumnBeads, getCurrentIndex, onSelect, beadsByStatus]
+    [getCurrentColumnBeads, getCurrentIndex, onSelect, columns]
   );
 
   /**
    * Jump to a specific column
    */
   const jumpToColumn = useCallback(
-    (status: BoardColumnStatus) => {
-      const columnBeads = beadsByStatus[status] || [];
+    (status: string) => {
+      const columnBeads = columns.find((c) => c.status === status)?.beads ?? [];
       setSelectedColumnStatus(status);
       if (columnBeads.length > 0) {
         const firstBead = columnBeads[0];
@@ -158,7 +152,7 @@ export function useKeyboardNavigation({
         setInternalSelectedId(null);
       }
     },
-    [beadsByStatus, onSelect]
+    [columns, onSelect]
   );
 
   /**
@@ -210,7 +204,7 @@ export function useKeyboardNavigation({
       // Handle 'g' prefix for column navigation
       if (awaitingColumnKey) {
         setAwaitingColumnKey(false);
-        const targetStatus = COLUMN_SHORTCUTS[event.key.toLowerCase()];
+        const targetStatus = columnForShortcut(event.key, columns.map((c) => c.status));
         if (targetStatus) {
           event.preventDefault();
           jumpToColumn(targetStatus);
@@ -263,6 +257,7 @@ export function useKeyboardNavigation({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     beads,
+    columns,
     internalSelectedId,
     isDetailOpen,
     awaitingColumnKey,

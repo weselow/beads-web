@@ -77,11 +77,6 @@ export interface StatusInfo {
   builtin: boolean;
 }
 
-/**
- * TEMPORARY until beads-web-5fk.3: the board still draws fixed columns and
- * folds every other status into open (see src/lib/board-fold.ts).
- */
-export type BoardColumnStatus = 'open' | 'in_progress' | 'inreview' | 'closed';
 
 /**
  * Badge on a card that sits in a column other than its own status.
@@ -133,11 +128,16 @@ export interface Comment {
 }
 
 /**
- * Kanban column configuration
+ * One column of the board: a status of the project with the beads shown in it
+ * (see src/lib/board-columns.ts).
  */
-export interface KanbanColumn {
-  id: BoardColumnStatus;
+export interface BoardColumn {
+  status: string;
   title: string;
+  /** Group of the status; sets the column's colour. */
+  category: StatusCategory;
+  /** Drawn as a narrow strip: empty, and not one of open, in_progress, closed. */
+  collapsed: boolean;
   beads: Bead[];
 }
 

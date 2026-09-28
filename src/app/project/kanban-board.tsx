@@ -38,7 +38,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
 import { isBlocked } from "@/lib/bead-utils";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
-import { boardColumns, foldIntoBoardColumns } from "@/lib/board-fold";
+import { buildBoardColumns } from "@/lib/board-columns";
 import { getIssueTypeMeta } from "@/lib/issue-types";
 import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoneStatus } from "@/lib/statuses";
@@ -172,14 +172,10 @@ export default function KanbanBoard() {
   }, [filteredBeads, typeFilter]);
 
   /**
-   * Split top-level beads into the board's columns. TEMPORARY until
-   * beads-web-5fk.3: statuses without a column are shown in open with a badge.
+   * Split top-level beads into a column per status of the project; pinned
+   * beads sit at the top of open, empty minor columns collapse.
    */
-  const columns = useMemo(() => boardColumns(statuses), [statuses]);
-  const filteredBeadsByStatus = useMemo(
-    () => foldIntoBoardColumns(topLevelBeads, statuses),
-    [topLevelBeads, statuses]
-  );
+  const columns = useMemo(() => buildBoardColumns(topLevelBeads, statuses), [topLevelBeads, statuses]);
 
   /**
    * Beads whose status is not in the project's list, for the warning indicator.
@@ -205,7 +201,7 @@ export default function KanbanBoard() {
   // Keyboard navigation (use top-level beads for navigation)
   const { selectedId } = useKeyboardNavigation({
     beads: topLevelBeads,
-    beadsByStatus: filteredBeadsByStatus,
+    columns,
     selectedId: null,
     onSelect: () => {
       // Just highlight, don't open detail
@@ -367,16 +363,15 @@ export default function KanbanBoard() {
             <div role="alert" className="text-danger">Error loading beads: {beadsError.message}</div>
           </div>
         ) : (
-          <div
-            className="grid h-full"
-            style={{ gap: 'var(--column-gap)', gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
-          >
-            {columns.map(({ status, title }) => (
+          <div className="flex h-full overflow-x-auto" style={{ gap: 'var(--column-gap)' }}>
+            {columns.map(({ status, title, category, collapsed, beads: columnBeads }) => (
               <KanbanColumn
                 key={status}
                 status={status}
                 title={title}
-                beads={filteredBeadsByStatus[status] || []}
+                category={category}
+                collapsed={collapsed}
+                beads={columnBeads}
                 allBeads={beads}
                 selectedBeadId={selectedId}
                 ticketNumbers={ticketNumbers}
