@@ -5,7 +5,7 @@
  * common operations.
  */
 
-import type { Bead, Epic, StatusInfo } from "@/types";
+import type { Bead, BeadCounts, Epic, StatusInfo } from "@/types";
 
 import * as api from './api';
 
@@ -85,6 +85,8 @@ export interface LoadProjectBeadsResult {
    * bead missing from it was deleted. `undefined` for the other sources.
    */
   complete?: boolean;
+  /** Beads by status group as the server counted them; absent on a partial read. */
+  counts?: BeadCounts;
 }
 
 export async function loadProjectBeads(projectPath: string, options?: { updatedAfter?: string }): Promise<Bead[]>;
@@ -105,6 +107,7 @@ export async function loadProjectBeads(projectPath: string, options?: { withSour
       source: result.source,
       commentTotal: result.comment_total,
       complete: result.complete,
+      counts: result.counts,
       stale: result.stale_reason === undefined
         ? null
         : { reason: result.stale_reason, modifiedAt: result.jsonl_modified_at },
