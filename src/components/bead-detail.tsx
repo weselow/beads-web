@@ -32,7 +32,7 @@ import {
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
 import { ISSUE_TYPES, getIssueTypeMeta } from "@/lib/issue-types";
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
-import { BUILTIN_STATUSES } from "@/lib/statuses";
+import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, StatusInfo, WorktreeStatus } from "@/types";
 
@@ -216,6 +216,7 @@ export function BeadDetail({
   const [isAddSubtaskOpen, setIsAddSubtaskOpen] = useState(false);
   const hasWorktree = worktreeStatus?.exists ?? false;
   const isEpic = bead.children && bead.children.length > 0;
+  const isDone = isDoneStatus(bead.status, statuses);
 
   // Resolve children from IDs
   const childTasks = useMemo(() => {
@@ -241,7 +242,7 @@ export function BeadDetail({
     if (!projectPath || isDoltProject(projectPath) || childTasks.length === 0) return;
 
     const results = await Promise.all(
-      childTasks.filter(c => c.status !== 'closed').map(async (child) => {
+      childTasks.filter(c => !isDoneStatus(c.status, statuses)).map(async (child) => {
         try {
           const prStatus = await api.git.prStatus(projectPath, child.id);
           if (prStatus.pr) {
@@ -257,7 +258,7 @@ export function BeadDetail({
       if (result) statusMap.set(result.id, result.status);
     }
     setChildPRStatuses(statusMap);
-  }, [projectPath, childTasks]);
+  }, [projectPath, childTasks, statuses]);
 
   useEffect(() => {
     if (!open || !isEpic || !projectPath || childTasks.length === 0) return;
@@ -326,7 +327,7 @@ export function BeadDetail({
             {bead.issue_type !== "epic" && hasWorktree && worktreeStatus?.worktree_path && (
               <div className={cn(
                 "font-mono text-xs text-t-muted",
-                bead.status === "closed" && "opacity-40"
+                isDone && "opacity-40"
               )}>
                 {formatWorktreePath(worktreeStatus.worktree_path)}
               </div>
@@ -401,8 +402,8 @@ export function BeadDetail({
             </span>
           </div>
 
-          {/* Close reason — shown only for closed beads */}
-          {bead.status === "closed" && bead.close_reason && (
+          {/* Close reason — shown only for done beads */}
+          {isDone && bead.close_reason && (
             <div className="mt-2 text-center text-xs text-t-muted">
               Closed: <span className="text-t-tertiary">{bead.close_reason}</span>
             </div>
@@ -493,7 +494,7 @@ export function BeadDetail({
                       </span>
                       <span className={cn(
                         "text-xs font-medium flex-1 min-w-0 truncate group-hover:underline",
-                        related.status === "closed" ? "line-through text-t-muted" : "text-t-secondary"
+                        isDoneStatus(related.status, statuses) ? "line-through text-t-muted" : "text-t-secondary"
                       )}>
                         {related.title}
                       </span>
@@ -535,6 +536,7 @@ export function BeadDetail({
                   onChildClick={onChildClick}
                   isExpanded={true}
                   childPRStatuses={childPRStatuses}
+                  statuses={statuses}
                 />
               </div>
             </div>

@@ -156,8 +156,8 @@ export interface LegacyPRInfo {
  */
 export interface EpicProgress {
   total: number;       // Total number of child tasks
-  completed: number;   // Number of children with status 'closed'
-  inProgress: number;  // Number of children with status 'in_progress'
+  completed: number;   // Number of children in the done group
+  inProgress: number;  // Number of children in the wip group
   blocked: number;     // Number of children with unresolved dependencies
 }
 
