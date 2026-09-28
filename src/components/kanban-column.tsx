@@ -6,24 +6,62 @@ import { BeadCard } from "@/components/bead-card";
 import { EpicCard } from "@/components/epic-card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Bead, BoardColumnStatus, Epic } from "@/types";
+import type { Bead, Epic, StatusCategory } from "@/types";
+
+export interface ColumnColors {
+  /** CSS colour for --column-accent, which some themes paint cards with */
+  accent: string;
+  /** Top border of the header */
+  border: string;
+  /** Column title */
+  text: string;
+  /** Count badge */
+  badge: string;
+}
 
 /**
- * Get the CSS color value for a column's accent (used as --column-accent)
+ * Colours by status group, from the theme's existing variables: active as
+ * open, wip as in progress, done as closed, frozen muted. Full class names,
+ * so Tailwind finds them.
  */
-function getColumnAccentColor(status: BoardColumnStatus): string {
-  switch (status) {
-    case "open": return "hsl(var(--status-open))";
-    case "in_progress": return "hsl(var(--status-progress))";
-    case "inreview": return "hsl(var(--status-review))";
-    case "closed": return "hsl(var(--status-closed))";
-    default: return "hsl(var(--text-muted))";
-  }
+const COLUMN_COLORS: Record<StatusCategory, ColumnColors> = {
+  active: {
+    accent: "hsl(var(--status-open))",
+    border: "border-t-2 border-t-status-open/60",
+    text: "text-status-open",
+    badge: "bg-status-open/20 text-status-open border-status-open/30 hover:bg-status-open/20",
+  },
+  wip: {
+    accent: "hsl(var(--status-progress))",
+    border: "border-t-2 border-t-status-progress/60",
+    text: "text-status-progress",
+    badge: "bg-status-progress/20 text-status-progress border-status-progress/30 hover:bg-status-progress/20",
+  },
+  done: {
+    accent: "hsl(var(--status-closed))",
+    border: "border-t-2 border-t-status-closed/60",
+    text: "text-status-closed",
+    badge: "bg-status-closed/20 text-status-closed border-status-closed/30 hover:bg-status-closed/20",
+  },
+  frozen: {
+    accent: "hsl(var(--text-muted))",
+    border: "border-t-2 border-t-t-muted/60",
+    text: "text-t-tertiary",
+    badge: "bg-t-muted/20 text-t-tertiary border-t-muted/30 hover:bg-t-muted/20",
+  },
+};
+
+export function getColumnColors(category: StatusCategory): ColumnColors {
+  return COLUMN_COLORS[category];
 }
 
 export interface KanbanColumnProps {
-  status: BoardColumnStatus;
+  status: string;
   title: string;
+  /** Group of the status; sets the column's colour */
+  category: StatusCategory;
+  /** Draw as a narrow strip with the name only (an empty column) */
+  collapsed?: boolean;
   beads: Bead[];
   /** All beads for resolving epic children */
   allBeads: Bead[];
@@ -41,148 +79,117 @@ export interface KanbanColumnProps {
 }
 
 /**
- * Get accent border class for column header based on status
- */
-function getColumnAccentBorder(status: BoardColumnStatus): string {
-  switch (status) {
-    case "open":
-      return "border-t-2 border-t-status-open/60";
-    case "in_progress":
-      return "border-t-2 border-t-status-progress/60";
-    case "inreview":
-      return "border-t-2 border-t-status-review/60";
-    case "closed":
-      return "border-t-2 border-t-status-closed/60";
-    default:
-      return "border-t-2 border-t-t-muted/60";
-  }
-}
-
-/**
- * Get header text color based on status
- */
-function getHeaderTextColor(status: BoardColumnStatus): string {
-  switch (status) {
-    case "open":
-      return "text-status-open";
-    case "in_progress":
-      return "text-status-progress";
-    case "inreview":
-      return "text-status-review";
-    case "closed":
-      return "text-status-closed";
-    default:
-      return "text-t-tertiary";
-  }
-}
-
-/**
- * Get badge color class for count badge based on status (dark theme)
- */
-function getBadgeVariant(status: BoardColumnStatus): string {
-  switch (status) {
-    case "open":
-      return "bg-status-open/20 text-status-open border-status-open/30 hover:bg-status-open/20";
-    case "in_progress":
-      return "bg-status-progress/20 text-status-progress border-status-progress/30 hover:bg-status-progress/20";
-    case "inreview":
-      return "bg-status-review/20 text-status-review border-status-review/30 hover:bg-status-review/20";
-    case "closed":
-      return "bg-status-closed/20 text-status-closed border-status-closed/30 hover:bg-status-closed/20";
-    default:
-      return "bg-t-muted/20 text-t-tertiary border-t-muted/30 hover:bg-t-muted/20";
-  }
-}
-
-/**
  * Type guard to check if a bead is an epic
  */
 function isEpic(bead: Bead): bead is Epic {
   return bead.issue_type === 'epic';
 }
 
+type BeadListProps = Omit<KanbanColumnProps, "status" | "title" | "category" | "collapsed">;
+
+type ColumnCardProps = Omit<BeadListProps, "beads"> & { bead: Bead };
+
 /**
- * Reusable Kanban column component with header, count badge, and scrollable bead list
- * Renders EpicCard for epics and BeadCard for standalone tasks
+ * One card of a column: EpicCard for an epic, BeadCard for the rest
  */
-export function KanbanColumn({
-  status,
-  title,
-  beads,
-  allBeads,
-  selectedBeadId,
-  ticketNumbers,
-  onSelectBead,
-  onChildClick,
-  onNavigateToDependency,
-  projectPath,
-  onUpdate,
-  readOnly = false,
-}: KanbanColumnProps) {
+function ColumnCard({ bead, ticketNumbers, selectedBeadId, onSelectBead, onChildClick, readOnly = false, ...rest }: ColumnCardProps) {
+  const common = {
+    allBeads: rest.allBeads,
+    ticketNumber: ticketNumbers?.get(bead.id),
+    isSelected: selectedBeadId === bead.id,
+    onSelect: onSelectBead,
+  };
+  if (!isEpic(bead)) return <BeadCard bead={bead} {...common} />;
   return (
-    <div
+    <EpicCard
+      epic={bead}
+      {...common}
+      onChildClick={onChildClick ?? onSelectBead}
+      onNavigateToDependency={rest.onNavigateToDependency}
+      projectPath={rest.projectPath}
+      onUpdate={rest.onUpdate}
+      readOnly={readOnly}
+    />
+  );
+}
+
+/**
+ * Scrollable list of a column's cards, or a placeholder when it has none
+ */
+function BeadList({ beads, ...cardProps }: BeadListProps) {
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      <div className="space-y-3">
+        {beads.map((bead) => <ColumnCard key={bead.id} bead={bead} {...cardProps} />)}
+        {beads.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-b-strong/50 rounded-lg">
+            <PackageOpen className="size-8 text-t-muted mb-2" aria-hidden="true" />
+            <span className="text-t-muted text-sm">No beads</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * An empty column shrunk to a narrow strip: the name reads top to bottom
+ */
+function CollapsedColumn({ title, colors }: { title: string; colors: ColumnColors }) {
+  return (
+    <section
+      aria-label={`${title}, no beads`}
+      title={`${title}: no beads`}
+      data-collapsed="true"
       className={cn(
-        "flex flex-col h-full min-h-0 theme-column",
+        "flex flex-col items-center gap-2 w-10 flex-none py-3 theme-column",
+        "bg-surface-raised/30 border border-b-default/50",
+        colors.border
+      )}
+      style={{ '--column-accent': colors.accent } as React.CSSProperties}
+    >
+      <Badge variant="secondary" className={cn("text-xs px-1.5 py-0.5 column-count-badge", colors.badge)}>
+        0
+      </Badge>
+      <span className={cn("font-semibold text-sm column-title-text [writing-mode:vertical-rl]", colors.text)}>
+        {title}
+      </span>
+    </section>
+  );
+}
+
+/**
+ * Kanban column with header, count badge and scrollable bead list, coloured
+ * by its status group. An empty column other than open, in progress and
+ * closed is drawn collapsed.
+ */
+export function KanbanColumn({ status, title, category, collapsed = false, ...listProps }: KanbanColumnProps) {
+  const colors = getColumnColors(category);
+  if (collapsed) return <CollapsedColumn title={title} colors={colors} />;
+  return (
+    <section
+      aria-label={title}
+      data-status={status}
+      className={cn(
+        "flex flex-col min-h-0 min-w-64 flex-1 basis-0 theme-column",
         "bg-surface-raised/30 border border-b-default/50"
       )}
-      style={{ '--column-accent': getColumnAccentColor(status) } as React.CSSProperties}
+      style={{ '--column-accent': colors.accent } as React.CSSProperties}
     >
       {/* Column Header - fixed height with colored accent border */}
       <div className={cn(
         "flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-b-default/50 brutalist-column-header",
-        getColumnAccentBorder(status)
+        colors.border
       )}>
-        <h2 className={cn("font-semibold text-sm column-title-text", getHeaderTextColor(status))}>{title}</h2>
+        <h2 className={cn("font-semibold text-sm column-title-text", colors.text)}>{title}</h2>
         <Badge
           variant="secondary"
-          className={cn("text-xs px-2 py-0.5 column-count-badge", getBadgeVariant(status))}
+          className={cn("text-xs px-2 py-0.5 column-count-badge", colors.badge)}
         >
-          {beads.length}
+          {listProps.beads.length}
         </Badge>
       </div>
-
-      {/* Scrollable Bead List */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        <div className="space-y-3">
-          {beads.map((bead) => {
-            // Render EpicCard for epics, BeadCard for standalone tasks
-            if (isEpic(bead)) {
-              return (
-                <EpicCard
-                  key={bead.id}
-                  epic={bead}
-                  allBeads={allBeads}
-                  ticketNumber={ticketNumbers?.get(bead.id)}
-                  isSelected={selectedBeadId === bead.id}
-                  onSelect={onSelectBead}
-                  onChildClick={onChildClick ?? onSelectBead}
-                  onNavigateToDependency={onNavigateToDependency}
-                  projectPath={projectPath}
-                  onUpdate={onUpdate}
-                  readOnly={readOnly}
-                />
-              );
-            }
-
-            return (
-              <BeadCard
-                key={bead.id}
-                bead={bead}
-                allBeads={allBeads}
-                ticketNumber={ticketNumbers?.get(bead.id)}
-                isSelected={selectedBeadId === bead.id}
-                onSelect={onSelectBead}
-              />
-            );
-          })}
-          {beads.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-b-strong/50 rounded-lg">
-              <PackageOpen className="size-8 text-t-muted mb-2" aria-hidden="true" />
-              <span className="text-t-muted text-sm">No beads</span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      <BeadList {...listProps} />
+    </section>
   );
 }
