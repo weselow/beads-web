@@ -13,6 +13,8 @@ interface EditableFieldProps {
   onSave: (value: string) => Promise<void>;
   /** Whether editing is disabled (e.g., dolt:// projects) */
   disabled?: boolean;
+  /** Tooltip on the value while editing is disabled, explaining why */
+  disabledTitle?: string;
   /** Use textarea instead of input */
   multiline?: boolean;
   /** CSS class for the display text */
@@ -32,6 +34,7 @@ export function EditableField({
   value,
   onSave,
   disabled,
+  disabledTitle,
   multiline,
   className,
   placeholder,
@@ -99,7 +102,7 @@ export function EditableField({
     : <span className="text-t-faint italic">{placeholder}</span>;
 
   if (disabled) {
-    return <span className={className}>{displayBody}</span>;
+    return <span className={className} title={disabledTitle}>{displayBody}</span>;
   }
 
   if (isSaving) {

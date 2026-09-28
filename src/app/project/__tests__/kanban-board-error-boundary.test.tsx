@@ -34,6 +34,7 @@ vi.mock('@/hooks/use-beads', () => ({
     ticketNumbers: new Map<string, number>(),
     isLoading: false,
     error: null,
+    stale: null,
     refresh: vi.fn(),
   }),
 }));

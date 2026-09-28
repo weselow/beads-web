@@ -36,6 +36,8 @@ export interface KanbanColumnProps {
   projectPath?: string;
   /** Callback after data changes (to refresh board) */
   onUpdate?: () => void;
+  /** Board shows an old copy from issues.jsonl: writes are disabled */
+  readOnly?: boolean;
 }
 
 /**
@@ -115,6 +117,7 @@ export function KanbanColumn({
   onNavigateToDependency,
   projectPath,
   onUpdate,
+  readOnly = false,
 }: KanbanColumnProps) {
   return (
     <div
@@ -156,6 +159,7 @@ export function KanbanColumn({
                   onNavigateToDependency={onNavigateToDependency}
                   projectPath={projectPath}
                   onUpdate={onUpdate}
+                  readOnly={readOnly}
                 />
               );
             }

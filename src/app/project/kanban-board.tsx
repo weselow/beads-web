@@ -16,6 +16,7 @@ import { KanbanColumn } from "@/components/kanban-column";
 import { MemoryPanel } from "@/components/memory-panel";
 import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
 import { QuickFilterBar } from "@/components/quick-filter-bar";
+import { StaleDataBanner } from "@/components/stale-data-banner";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -74,8 +75,12 @@ export default function KanbanBoard() {
     ticketNumbers,
     isLoading: beadsLoading,
     error: beadsError,
+    stale,
     refresh: refreshBeads,
   } = useBeads(project?.path ?? "");
+
+  // An old copy from issues.jsonl: bd failed, and every write goes through bd.
+  const readOnly = stale !== null;
 
   // Use the bead filters hook with 300ms debounce
   const {
@@ -346,8 +351,15 @@ export default function KanbanBoard() {
           unknownStatusCount={unknownStatusBeads.length}
           unknownStatusNames={unknownStatusNames}
           onNewBead={() => setIsCreateOpen(true)}
+          readOnly={readOnly}
         />
       </div>
+
+      {stale && (
+        <div className="px-4 pb-3">
+          <StaleDataBanner stale={stale} />
+        </div>
+      )}
 
       {/* Kanban Columns.
           The boundary sits inside <main> on purpose: a render error in the
@@ -379,6 +391,7 @@ export default function KanbanBoard() {
                 onNavigateToDependency={navigateToBead}
                 projectPath={project?.path}
                 onUpdate={refreshBeads}
+                readOnly={readOnly}
               />
             ))}
           </div>
@@ -401,12 +414,14 @@ export default function KanbanBoard() {
           onBack={goBack}
           canGoBack={canGoBack}
           onUpdate={refreshBeads}
+          readOnly={readOnly}
         >
           <CommentList
             comments={detailBead.comments}
             beadId={detailBead.id}
             projectPath={project?.path ?? ""}
             onCommentAdded={() => refreshBeads({ full: true })}
+            readOnly={readOnly}
           />
           <ActivityTimeline
             bead={detailBead}
@@ -426,6 +441,7 @@ export default function KanbanBoard() {
           open={isMemoryOpen}
           onOpenChange={setIsMemoryOpen}
           projectPath={fsPath}
+          readOnly={readOnly}
         />
       )}
       </ErrorBoundary>

@@ -104,9 +104,22 @@ export function getUnknownStatusNames(beads: Bead[]): string[] {
  * const beads = await loadProjectBeads('/path/to/project');
  * ```
  */
+/**
+ * The board is showing an old copy: bd was called and failed, so the server
+ * answered from issues.jsonl instead.
+ */
+export interface StaleSource {
+  /** bd's error text; may span several lines. */
+  reason: string;
+  /** When issues.jsonl was last written, if the server knows. */
+  modifiedAt?: string;
+}
+
 export interface LoadProjectBeadsResult {
   beads: Bead[];
   source?: string;
+  /** `null` unless the server marked the answer as an old copy. */
+  stale: StaleSource | null;
   /**
    * Total number of comments in the project, reported by the server on every
    * response — also on incremental ones, where `beads` holds only the changed
@@ -139,6 +152,9 @@ export async function loadProjectBeads(projectPath: string, options?: { withSour
       source: result.source,
       commentTotal: result.comment_total,
       complete: result.complete,
+      stale: result.stale_reason === undefined
+        ? null
+        : { reason: result.stale_reason, modifiedAt: result.jsonl_modified_at },
     };
   }
   return mapped;

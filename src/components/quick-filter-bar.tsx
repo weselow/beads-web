@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/tooltip';
 import { ISSUE_TYPES, getIssueTypeMeta } from '@/lib/issue-types';
 import type { IssueTypeFilter } from '@/lib/issue-types';
+import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from '@/lib/read-only';
 import { cn } from '@/lib/utils';
 import type { BeadStatus } from '@/types';
 
@@ -81,6 +82,8 @@ interface QuickFilterBarProps {
   unknownStatusNames?: string[];
   /** Callback when "New" button is clicked */
   onNewBead?: () => void;
+  /** Board shows an old copy from issues.jsonl: the New button is disabled */
+  readOnly?: boolean;
 }
 
 const SORT_OPTIONS: { value: string; label: string; field: SortField; direction: SortDirection }[] = [
@@ -127,6 +130,7 @@ export function QuickFilterBar({
   unknownStatusCount = 0,
   unknownStatusNames = [],
   onNewBead,
+  readOnly = false,
 }: QuickFilterBarProps) {
   const currentSortValue = `${sortField}_${sortDirection}`;
 
@@ -176,7 +180,12 @@ export function QuickFilterBar({
         <Button
           size="sm"
           onClick={onNewBead}
-          className="h-8 px-3 gap-1.5 bg-success text-white hover:bg-success/85 font-medium shadow-sm"
+          disabled={readOnly}
+          title={readOnly ? READ_ONLY_HINT : undefined}
+          className={cn(
+            'h-8 px-3 gap-1.5 bg-success text-white hover:bg-success/85 font-medium shadow-sm',
+            READ_ONLY_BUTTON_CLASS
+          )}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           New

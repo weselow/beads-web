@@ -51,6 +51,13 @@ export const BeadsResponseSchema = z.object({
    * (journal-backed projects), so a bead missing from it was deleted.
    */
   complete: z.boolean().optional(),
+  /**
+   * Set when bd was called and failed, so `beads` came from issues.jsonl and
+   * may be an old copy. Holds bd's own error text, possibly several lines.
+   */
+  stale_reason: z.string().optional(),
+  /** Modification time of issues.jsonl; may be absent even with `stale_reason`. */
+  jsonl_modified_at: z.string().optional(),
 });
 
 export const PRChecksSchema = z.object({

@@ -31,6 +31,7 @@ import {
 } from "@/lib/bead-utils";
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
 import { ISSUE_TYPES, getIssueTypeMeta } from "@/lib/issue-types";
+import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, WorktreeStatus } from "@/types";
 
@@ -43,6 +44,10 @@ const PRIORITY_OPTIONS = [
   { value: 3, label: "P3" },
   { value: 4, label: "P4" },
 ] as const;
+
+/** Inline selects in the metadata row (type, status, priority). */
+const METADATA_SELECT_CLASS =
+  "bg-transparent border-none text-sm text-t-tertiary cursor-pointer hover:text-t-secondary focus:outline-none appearance-none disabled:cursor-not-allowed disabled:opacity-60";
 
 export interface BeadDetailProps {
   bead: Bead;
@@ -60,6 +65,8 @@ export interface BeadDetailProps {
   canGoBack?: boolean;
   onCleanup?: () => void;
   onUpdate?: () => void;
+  /** Board shows an old copy from issues.jsonl: field edits and new subtasks are disabled */
+  readOnly?: boolean;
 }
 
 /**
@@ -80,6 +87,7 @@ export function BeadDetail({
   canGoBack,
   onCleanup,
   onUpdate,
+  readOnly = false,
 }: BeadDetailProps) {
   // Close on Escape key
   useEffect(() => {
@@ -117,7 +125,10 @@ export function BeadDetail({
     if (panel) panel.scrollTop = scrollOffsets.current.get(bead.id) ?? 0;
   }, [open, bead.id]);
 
+  // No project path: fields render as plain text. `readOnly` (an old copy)
+  // keeps the controls visible but disabled, with a tooltip saying why.
   const isReadOnly = !projectPath;
+  const readOnlyTitle = readOnly ? READ_ONLY_HINT : undefined;
   const isDolt = projectPath ? isDoltProject(projectPath) : false;
   const typeMeta = getIssueTypeMeta(bead.issue_type);
   const TypeIcon = typeMeta.icon;
@@ -293,7 +304,8 @@ export function BeadDetail({
               <EditableField
                 value={bead.title}
                 onSave={handleSaveTitle}
-                disabled={isReadOnly}
+                disabled={isReadOnly || readOnly}
+                disabledTitle={readOnlyTitle}
               />
             </h2>
 
@@ -319,7 +331,9 @@ export function BeadDetail({
                   value={bead.issue_type}
                   onChange={handleSaveIssueType}
                   aria-label="Issue type"
-                  className="bg-transparent border-none text-sm text-t-tertiary cursor-pointer hover:text-t-secondary focus:outline-none appearance-none"
+                  disabled={readOnly}
+                  title={readOnlyTitle}
+                  className={METADATA_SELECT_CLASS}
                 >
                   {ISSUE_TYPES.map((meta) => (
                     <option key={meta.value} value={meta.value}>{meta.label}</option>
@@ -336,7 +350,10 @@ export function BeadDetail({
                 <select
                   value={bead.status}
                   onChange={handleStatusChange}
-                  className="bg-transparent border-none text-sm text-t-tertiary cursor-pointer hover:text-t-secondary focus:outline-none appearance-none"
+                  aria-label="Status"
+                  disabled={readOnly}
+                  title={readOnlyTitle}
+                  className={METADATA_SELECT_CLASS}
                 >
                   <option value="open">Open</option>
                   <option value="in_progress">In Progress</option>
@@ -355,7 +372,9 @@ export function BeadDetail({
                   value={bead.priority}
                   onChange={handleSavePriority}
                   aria-label="Priority"
-                  className="bg-transparent border-none text-sm text-t-tertiary cursor-pointer hover:text-t-secondary focus:outline-none appearance-none"
+                  disabled={readOnly}
+                  title={readOnlyTitle}
+                  className={METADATA_SELECT_CLASS}
                 >
                   {PRIORITY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -397,7 +416,8 @@ export function BeadDetail({
                 <EditableField
                   value={bead.description ?? ""}
                   onSave={handleSaveDescription}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || readOnly}
+                  disabledTitle={readOnlyTitle}
                   multiline
                   placeholder="Add a description…"
                   renderValue={(v) => <MarkdownBody>{v}</MarkdownBody>}
@@ -487,7 +507,9 @@ export function BeadDetail({
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsAddSubtaskOpen(true)}
-                    className="h-7 px-2 gap-1 text-xs text-success hover:text-success"
+                    disabled={readOnly}
+                    title={readOnlyTitle}
+                    className={cn("h-7 px-2 gap-1 text-xs text-success hover:text-success", READ_ONLY_BUTTON_CLASS)}
                   >
                     <Plus className="size-3.5" aria-hidden="true" />
                     Add subtask
