@@ -19,21 +19,8 @@ import { isDoltProject } from "@/lib/utils";
 import type { Bead, BeadStatus } from "@/types";
 
 export interface RefreshBeadsOptions {
-  /**
-   * Ignore the incremental cursor, replace state with a complete response and
-   * ask the server to re-read the project from scratch (`full=1`).
-   */
-  full?: boolean;
-}
-
-interface LoadBeadsOptions {
   /** Ignore the incremental cursor and replace state with a complete response. */
   full?: boolean;
-  /**
-   * Also make the server re-read the project from scratch. Expensive for
-   * journal-backed projects, so only an explicit manual refresh asks for it.
-   */
-  reread?: boolean;
 }
 
 /** Poll period for projects whose server keeps up through the bd events journal. */
@@ -120,7 +107,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
   /**
    * Load beads from the project directory
    */
-  const loadBeads = useCallback(async (options?: LoadBeadsOptions) => {
+  const loadBeads = useCallback(async (options?: RefreshBeadsOptions) => {
     if (!projectPath) {
       setBeads([]);
       setBeadsByStatus(EMPTY_GROUPED);
@@ -148,7 +135,6 @@ export function useBeads(projectPath: string): UseBeadsResult {
       const result = await loadProjectBeads(projectPath, {
         withSource: true,
         updatedAfter,
-        full: options?.reread,
       });
       const fetchedBeads = result.beads;
       setDataSource(result.source ?? null);
@@ -210,7 +196,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
    * Public refresh function for manual reload
    */
   const refresh = useCallback(async (options?: RefreshBeadsOptions) => {
-    await loadBeads({ full: options?.full, reread: options?.full });
+    await loadBeads(options);
   }, [loadBeads]);
 
   // Initial load when project path changes

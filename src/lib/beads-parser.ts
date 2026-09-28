@@ -120,16 +120,10 @@ export interface LoadProjectBeadsResult {
   complete?: boolean;
 }
 
-interface LoadProjectBeadsOptions {
-  updatedAfter?: string;
-  /** Ask the server to re-read the project from scratch (`full=1`). */
-  full?: boolean;
-}
-
-export async function loadProjectBeads(projectPath: string, options?: LoadProjectBeadsOptions): Promise<Bead[]>;
-export async function loadProjectBeads(projectPath: string, options: LoadProjectBeadsOptions & { withSource: true }): Promise<LoadProjectBeadsResult>;
-export async function loadProjectBeads(projectPath: string, options?: LoadProjectBeadsOptions & { withSource?: true }): Promise<Bead[] | LoadProjectBeadsResult> {
-  const result = await api.beads.read(projectPath, options?.updatedAfter, options?.full);
+export async function loadProjectBeads(projectPath: string, options?: { updatedAfter?: string }): Promise<Bead[]>;
+export async function loadProjectBeads(projectPath: string, options: { withSource: true; updatedAfter?: string }): Promise<LoadProjectBeadsResult>;
+export async function loadProjectBeads(projectPath: string, options?: { withSource?: true; updatedAfter?: string }): Promise<Bead[] | LoadProjectBeadsResult> {
+  const result = await api.beads.read(projectPath, options?.updatedAfter);
   // Map statuses, filter tombstones, ensure comments array
   const mapped: Bead[] = [];
   for (const bead of result.beads) {

@@ -102,18 +102,40 @@ describe('useBeads full refreshes', () => {
     expect(loadProjectBeadsMock.mock.calls[2][1]).toEqual({
       withSource: true,
       updatedAfter: undefined,
-      full: true,
     });
     expect(result.current.beads[0].comments[0].text).toBe('Visible');
   });
 
-  it('does not ask the server for a full re-read on the initial load', async () => {
-    loadProjectBeadsMock.mockResolvedValueOnce({ beads: [baseBead], source: 'jsonl' });
+  it('never asks the server for a full re-read', async () => {
+    const poll = capturePoll();
+    // Every read reports a changed comment total, so the poll also makes its
+    // second, full read.
+    let total = 0;
+    loadProjectBeadsMock.mockImplementation(async () => ({
+      beads: [baseBead],
+      source: 'cli',
+      commentTotal: total++,
+    }));
 
-    const { result } = renderHook(() => useBeads('/tmp/project'));
+    const { result } = renderHook(() => useBeads('C:\project'));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(poll.current).toBeTypeOf('function'));
 
-    expect(loadProjectBeadsMock.mock.calls[0][1]).not.toHaveProperty('full', true);
+    await act(async () => {
+      await result.current.refresh({ full: true });
+    });
+    act(() => {
+      watchedChange?.();
+    });
+    await waitFor(() => expect(loadProjectBeadsMock).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      poll.current?.();
+    });
+    await waitFor(() => expect(loadProjectBeadsMock).toHaveBeenCalledTimes(5));
+
+    for (const [, options] of loadProjectBeadsMock.mock.calls) {
+      expect(options).not.toHaveProperty('full');
+    }
   });
 
   it('uses a full refresh for JSONL watcher notifications', async () => {

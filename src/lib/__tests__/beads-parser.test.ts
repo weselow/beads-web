@@ -54,14 +54,4 @@ describe('loadProjectBeads', () => {
 
     expect(result.complete).toBeUndefined();
   });
-
-  it('asks the server for a full re-read only when full is set', async () => {
-    mockFetch.mockResolvedValue(mockResponse({ beads: [] }));
-
-    await loadProjectBeads('/test/path', { withSource: true, full: true });
-    await loadProjectBeads('/test/path', { withSource: true });
-
-    expect(mockFetch.mock.calls[0][0]).toContain('full=1');
-    expect(mockFetch.mock.calls[1][0]).not.toContain('full=');
-  });
 });
