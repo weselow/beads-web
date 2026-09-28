@@ -56,10 +56,10 @@ describe('useProjects — cached counts seeding', () => {
       lastOpened: '2026-04-22T00:00:00Z',
       createdAt: '2026-04-22T00:00:00Z',
       cachedCounts: {
-        open: 3,
-        in_progress: 1,
-        inreview: 0,
-        closed: 5,
+        active: 3,
+        wip: 1,
+        frozen: 2,
+        done: 5,
         dataSource: 'dolt-direct',
         updatedAt: '2026-04-22T00:00:00Z',
       },
@@ -77,12 +77,7 @@ describe('useProjects — cached counts seeding', () => {
 
     expect(result.current.projects).toHaveLength(1);
     const seeded = result.current.projects[0];
-    expect(seeded.beadCounts).toEqual({
-      open: 3,
-      in_progress: 1,
-      inreview: 0,
-      closed: 5,
-    });
+    expect(seeded.beadCounts).toEqual({ active: 3, wip: 1, frozen: 2, done: 5 });
     expect(seeded.countsLoaded).toBe(true);
     expect(seeded.dataSource).toBe('dolt-direct');
   });
@@ -110,11 +105,53 @@ describe('useProjects — cached counts seeding', () => {
     expect(seeded.countsLoaded).toBe(false);
     // Zero counts are a fallback — NOT a real "0 tasks" signal. The
     // dashed donut rendering in project-card distinguishes these.
-    expect(seeded.beadCounts).toEqual({
-      open: 0,
-      in_progress: 0,
-      inreview: 0,
-      closed: 0,
+    expect(seeded.beadCounts).toEqual({ active: 0, wip: 0, frozen: 0, done: 0 });
+  });
+});
+
+describe('useProjects — fresh counts', () => {
+  const project: Project = {
+    id: 'p3',
+    name: 'live-project',
+    path: '/tmp/live-project',
+    tags: [],
+    lastOpened: '2026-09-29T00:00:00Z',
+    createdAt: '2026-09-29T00:00:00Z',
+    cachedCounts: null,
+  };
+
+  it('takes the counts the server sent, without counting the beads again', async () => {
+    getProjectsWithTagsMock.mockResolvedValueOnce([project]);
+    loadProjectBeadsMock.mockReset();
+    loadProjectBeadsMock.mockResolvedValueOnce({
+      // One open bead, yet the server says otherwise: its numbers win.
+      beads: [{ id: 'a', status: 'open' }],
+      source: 'cli',
+      stale: null,
+      counts: { active: 4, wip: 2, frozen: 1, done: 9 },
     });
+
+    const { result } = renderHook(() => useProjects());
+
+    await waitFor(() => {
+      expect(result.current.projects[0]?.dataSource).toBe('cli');
+    });
+    const loaded = result.current.projects[0];
+    expect(loaded.beadCounts).toEqual({ active: 4, wip: 2, frozen: 1, done: 9 });
+    expect(loaded.countsLoaded).toBe(true);
+    expect(loaded.beadError).toBeUndefined();
+  });
+
+  it('reports an error when the server sent no counts', async () => {
+    getProjectsWithTagsMock.mockResolvedValueOnce([project]);
+    loadProjectBeadsMock.mockReset();
+    loadProjectBeadsMock.mockResolvedValueOnce({ beads: [], source: 'cli', stale: null });
+
+    const { result } = renderHook(() => useProjects());
+
+    await waitFor(() => {
+      expect(result.current.projects[0]?.beadError).toBeDefined();
+    });
+    expect(result.current.projects[0].beadError).toMatch(/counts/i);
   });
 });

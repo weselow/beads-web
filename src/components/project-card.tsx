@@ -75,7 +75,7 @@ export function ProjectCard({
   path,
   localPath,
   tags,
-  beadCounts = { open: 0, in_progress: 0, inreview: 0, closed: 0 },
+  beadCounts = { active: 0, wip: 0, frozen: 0, done: 0 },
   countsLoaded = true,
   dataSource,
   beadError,

@@ -21,8 +21,9 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use super::journal::{self, JournalCache};
+use super::statuses::{self, StatusCache};
 use super::validate_path_security;
-use crate::db::{CachedCounts, Database};
+use crate::db::{CachedCounts, Database, GroupCounts, LegacyCounts};
 use crate::dolt::{self, DoltManager};
 
 /// Resolves the Dolt server port for a project.
@@ -310,63 +311,66 @@ fn extract_json_array(output: &str) -> Result<&str, String> {
     }
 }
 
-/// Computes bead counts from a slice of beads and upserts them into the
-/// local SQLite cache so the home page can render donut charts instantly.
-///
-/// Cache writes are best-effort — failures are logged but never propagated
-/// to the `/api/beads` response. The `project_path` is looked up against
-/// the `projects` table; if no matching project exists (e.g. `dolt://`
-/// paths or paths unknown to the local DB), the cache is skipped.
-fn upsert_counts_cache(
-    db: &Database,
-    project_path: &str,
-    data_source: &str,
-    beads: &[Bead],
-) {
-    let project = match db.get_project_by_path(project_path) {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            tracing::debug!(
-                "No project row for path {}, skipping counts cache",
-                project_path
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::warn!("Failed to look up project by path {}: {}", project_path, e);
-            return;
-        }
-    };
-
-    let mut open = 0i64;
-    let mut in_progress = 0i64;
-    let mut inreview = 0i64;
-    let mut closed = 0i64;
+/// Counts by the four exact status names 0.13 knew, for the old columns.
+fn legacy_counts(beads: &[Bead]) -> LegacyCounts {
+    let mut counts = LegacyCounts::default();
     for bead in beads {
         match bead.status.as_str() {
-            "open" => open += 1,
-            "in_progress" => in_progress += 1,
-            "inreview" => inreview += 1,
-            "closed" => closed += 1,
+            "open" => counts.open += 1,
+            "in_progress" => counts.in_progress += 1,
+            "inreview" => counts.inreview += 1,
+            "closed" => counts.closed += 1,
             _ => {}
         }
     }
+    counts
+}
 
+/// Whether a read returned the project's whole bead list, so counts made
+/// from it are true. Only the bd CLI tier honours `updated_after`; its
+/// answer then holds just the changed beads.
+fn counts_are_complete(source: &str, updated_after: Option<&str>) -> bool {
+    !(source == "cli" && updated_after.is_some())
+}
+
+/// Counts a complete bead list by status group — the one count both the
+/// `/api/beads` response and the home-page cache use.
+async fn group_counts(
+    dolt_manager: &DoltManager,
+    status_cache: &StatusCache,
+    path: &str,
+    beads: &[Bead],
+) -> GroupCounts {
+    let names: Vec<&str> = beads.iter().map(|b| b.status.as_str()).collect();
+    statuses::group_counts_for(dolt_manager, status_cache, path, &names).await
+}
+
+/// Upserts a project's group counts (plus the old per-status columns) into
+/// the local SQLite cache so the home page can render donut charts instantly.
+///
+/// Cache writes are best-effort — failures are logged but never propagated
+/// to the `/api/beads` response. The `project_path` is looked up against
+/// the `projects` table; if no matching project exists (e.g. paths unknown
+/// to the local DB), the cache is skipped.
+fn upsert_counts_cache(db: &Database, project_path: &str, data_source: &str, beads: &[Bead], groups: &GroupCounts) {
+    let project = match db.get_project_by_path(project_path) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            tracing::debug!(project = %project_path, "no project row, skipping counts cache");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(project = %project_path, error = %e, "project lookup failed, skipping counts cache");
+            return;
+        }
+    };
     let counts = CachedCounts {
-        open,
-        in_progress,
-        inreview,
-        closed,
+        groups: *groups,
         data_source: Some(data_source.to_string()),
         updated_at: Utc::now().to_rfc3339(),
     };
-
-    if let Err(e) = db.upsert_cached_counts(&project.id, &counts) {
-        tracing::warn!(
-            "Failed to upsert cached counts for project {}: {}",
-            project.id,
-            e
-        );
+    if let Err(e) = db.upsert_cached_counts(&project.id, &counts, &legacy_counts(beads)) {
+        tracing::warn!(project_id = %project.id, error = %e, "failed to write cached counts");
     }
 }
 
@@ -664,13 +668,17 @@ pub(crate) async fn live_project_dolt(project_path: &Path) -> Option<(u16, Strin
 /// Reads beads from a project. For `dolt://` paths, reads directly from Dolt SQL.
 /// For filesystem paths, uses three-tier fallback: Dolt SQL → bd CLI → JSONL.
 ///
-/// On every successful read, the computed per-status bead counts are upserted
+/// Every read of the whole bead list answers with `counts` — the beads by
+/// status group `{active, wip, frozen, done}` — and writes the same numbers
 /// into the local SQLite cache (`project_bead_counts`) so `/api/projects` can
 /// return them for instant home-page rendering. Cache writes are best-effort.
+/// A partial read (bd CLI with `updated_after`) has no `counts` and leaves
+/// the cache alone.
 pub async fn read_beads(
     Extension(dolt_manager): Extension<Arc<DoltManager>>,
     Extension(db): Extension<Arc<Database>>,
     Extension(journal_cache): Extension<Arc<JournalCache>>,
+    Extension(status_cache): Extension<Arc<StatusCache>>,
     Query(params): Query<BeadsParams>,
 ) -> impl IntoResponse {
     // Normalize Windows backslashes to forward slashes
@@ -687,9 +695,10 @@ pub async fn read_beads(
         return match dolt_manager.read_beads(db_name).await {
             Ok(beads) => {
                 let beads = post_process_beads(beads);
-                upsert_counts_cache(&db, &path, "dolt-direct", &beads);
+                let counts = group_counts(&dolt_manager, &status_cache, &path, &beads).await;
+                upsert_counts_cache(&db, &path, "dolt-direct", &beads, &counts);
                 let comment_total = count_comments(&beads);
-                (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-direct", "comment_total": comment_total })))
+                (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-direct", "comment_total": comment_total, "counts": counts })))
             }
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -724,9 +733,10 @@ pub async fn read_beads(
             Ok(beads) => {
                 tracing::info!("Read {} beads from per-project Dolt (port {})", beads.len(), port);
                 let beads = post_process_beads(beads);
-                upsert_counts_cache(&db, &path, "dolt-project", &beads);
+                let counts = group_counts(&dolt_manager, &status_cache, &path, &beads).await;
+                upsert_counts_cache(&db, &path, "dolt-project", &beads, &counts);
                 let comment_total = count_comments(&beads);
-                return (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-project", "comment_total": comment_total })));
+                return (StatusCode::OK, Json(serde_json::json!({ "beads": beads, "source": "dolt-project", "comment_total": comment_total, "counts": counts })));
             }
             Err(e) => {
                 tracing::warn!("Per-project Dolt server on port {} failed: {}, falling back", port, e);
@@ -817,9 +827,15 @@ pub async fn read_beads(
     };
 
     let beads = post_process_beads(beads);
-    upsert_counts_cache(&db, &path, source, &beads);
     let comment_total = cli_comment_total.unwrap_or_else(|| count_comments(&beads));
     let mut body = serde_json::json!({ "beads": beads, "source": source, "comment_total": comment_total });
+    if counts_are_complete(source, params.updated_after.as_deref()) {
+        let counts = group_counts(&dolt_manager, &status_cache, &path, &beads).await;
+        upsert_counts_cache(&db, &path, source, &beads, &counts);
+        body["counts"] = serde_json::json!(counts);
+    } else {
+        tracing::debug!(project = %path, "partial read, counts not computed or cached");
+    }
     if source == "cli-journal" {
         // Tells the page this is the whole list, so beads missing from it
         // were deleted.
@@ -1417,6 +1433,60 @@ pub fn recompute_epic_statuses(issues_path: &Path) -> Result<Vec<String>, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- counts by status group ---
+
+    fn bead_with_status(id: &str, status: &str) -> Bead {
+        serde_json::from_value(serde_json::json!({ "id": id, "title": id, "status": status })).unwrap()
+    }
+
+    fn groups(active: i64, wip: i64, frozen: i64, done: i64) -> GroupCounts {
+        GroupCounts { active, wip, frozen, done }
+    }
+
+    #[test]
+    fn test_counts_complete_for_every_full_read() {
+        for source in ["dolt-direct", "dolt-project", "dolt-central", "cli-journal", "cli", "jsonl"] {
+            assert!(counts_are_complete(source, None), "{source}");
+        }
+    }
+
+    #[test]
+    fn test_counts_incomplete_for_cli_read_with_updated_after() {
+        assert!(!counts_are_complete("cli", Some("2026-09-29T10:00:00Z")));
+    }
+
+    #[test]
+    fn test_counts_complete_when_source_ignores_updated_after() {
+        let since = Some("2026-09-29T10:00:00Z");
+        for source in ["dolt-central", "cli-journal", "jsonl"] {
+            assert!(counts_are_complete(source, since), "{source}");
+        }
+    }
+
+    #[test]
+    fn test_counts_cache_stores_groups_and_old_columns() {
+        let db = Database::new_in_memory().unwrap();
+        let input = crate::db::CreateProjectInput { name: "p".into(), path: "/p".into(), local_path: None };
+        let project = db.create_project(input).unwrap();
+        let beads: Vec<Bead> = ["open", "blocked", "inreview", "closed", "closed"]
+            .iter()
+            .enumerate()
+            .map(|(i, s)| bead_with_status(&i.to_string(), s))
+            .collect();
+        upsert_counts_cache(&db, "/p", "cli", &beads, &groups(1, 2, 0, 2));
+        let cached = db.get_cached_counts(&project.id).unwrap().unwrap();
+        assert_eq!(cached.groups, groups(1, 2, 0, 2));
+        assert_eq!(cached.data_source.as_deref(), Some("cli"));
+        assert_eq!(legacy_counts(&beads), LegacyCounts { open: 1, in_progress: 0, inreview: 1, closed: 2 });
+    }
+
+    #[test]
+    fn test_counts_cache_skips_unknown_project() {
+        let db = Database::new_in_memory().unwrap();
+        // No panic, nothing written: the path has no project row.
+        upsert_counts_cache(&db, "/nowhere", "cli", &[], &GroupCounts::default());
+    }
 
     // --- stale issues.jsonl fields ---
 

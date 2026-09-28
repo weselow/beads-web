@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use super::beads::{self, DOLT_PATH_PREFIX};
 use super::validate_path_security;
+use crate::db::GroupCounts;
 use crate::dolt::{self, DoltManager};
 
 /// How long a project's status list is served from memory before bd is asked
@@ -65,7 +66,7 @@ fn normalize_category(raw: &str) -> &'static str {
     }
 }
 
-fn builtin_statuses() -> Vec<StatusInfo> {
+pub(crate) fn builtin_statuses() -> Vec<StatusInfo> {
     BUILTIN_STATUSES
         .iter()
         .map(|(name, category)| StatusInfo { name: name.to_string(), category, builtin: true })
@@ -135,6 +136,45 @@ fn statuses_with_custom(custom: Option<&str>) -> Vec<StatusInfo> {
     let mut list = builtin_statuses();
     append_custom(&mut list, parse_status_custom(custom.unwrap_or_default()));
     list
+}
+
+/// Statuses older bd versions wrote, and the current status each stands for.
+const STATUS_SYNONYMS: [(&str, &str); 3] = [("done", "closed"), ("resolved", "closed"), ("pending", "open")];
+
+/// The status a bead's stored status stands for today; `None` for a
+/// tombstone (a deleted bead), which is not counted anywhere.
+fn current_status(raw: &str) -> Option<&str> {
+    if raw == "tombstone" {
+        return None;
+    }
+    let synonym = STATUS_SYNONYMS.iter().find(|(old, _)| *old == raw);
+    Some(synonym.map_or(raw, |(_, current)| current))
+}
+
+/// Counts bead statuses by group. A status missing from `statuses` counts
+/// as `active`: the board shows such a bead in the open column.
+pub fn count_by_group<'a>(names: impl IntoIterator<Item = &'a str>, statuses: &[StatusInfo]) -> GroupCounts {
+    let mut counts = GroupCounts::default();
+    for name in names.into_iter().filter_map(current_status) {
+        let category = statuses.iter().find(|s| s.name == name).map_or("active", |s| s.category);
+        match category {
+            "wip" => counts.wip += 1,
+            "frozen" => counts.frozen += 1,
+            "done" => counts.done += 1,
+            _ => counts.active += 1,
+        }
+    }
+    counts
+}
+
+/// Whether some status is not one of bd's built-ins, so its group can only
+/// come from the project's own list. Built-ins keep their group in every
+/// project: an own status cannot take a built-in name.
+pub fn needs_project_list<'a>(names: impl IntoIterator<Item = &'a str>) -> bool {
+    names
+        .into_iter()
+        .filter_map(current_status)
+        .any(|name| !BUILTIN_STATUSES.iter().any(|(builtin, _)| *builtin == name))
 }
 
 /// Status lists kept in memory, one per project path.
@@ -267,20 +307,26 @@ pub async fn read_statuses(
     Query(params): Query<StatusesParams>,
 ) -> JsonResponse {
     let path = params.path.replace('\\', "/");
-    let dolt_db = path.strip_prefix(DOLT_PATH_PREFIX);
-    if dolt_db.is_none() {
+    if !path.starts_with(DOLT_PATH_PREFIX) {
         if let Err(response) = check_project_dir(Path::new(&path)) {
             return response;
         }
     }
-    if let Some(hit) = cache.get(&path) {
+    ok_response(&project_statuses(&dolt_manager, &cache, &path).await)
+}
+
+/// The status list of a project whose path was already checked: from memory
+/// when fresh, otherwise read and remembered. `path` uses forward slashes;
+/// `dolt://name` means a database on the central Dolt server.
+pub async fn project_statuses(dolt_manager: &DoltManager, cache: &StatusCache, path: &str) -> LoadedStatuses {
+    if let Some(hit) = cache.get(path) {
         tracing::debug!(project = %path, source = hit.source, "statuses served from memory");
-        return ok_response(&hit);
+        return hit;
     }
     let started = Instant::now();
-    let loaded = match dolt_db {
-        Some(db_name) => load_from_central(&dolt_manager, db_name).await,
-        None => load_from_project(Path::new(&path)).await,
+    let loaded = match path.strip_prefix(DOLT_PATH_PREFIX) {
+        Some(db_name) => load_from_central(dolt_manager, db_name).await,
+        None => load_from_project(Path::new(path)).await,
     };
     tracing::info!(
         project = %path,
@@ -289,8 +335,24 @@ pub async fn read_statuses(
         duration_ms = started.elapsed().as_millis() as u64,
         "read project statuses"
     );
-    remember(&cache, &path, &loaded);
-    ok_response(&loaded)
+    remember(cache, path, &loaded);
+    loaded
+}
+
+/// Counts a project's beads by group, given their stored statuses. Reads the
+/// project's status list only when some status is not a bd built-in.
+pub async fn group_counts_for(
+    dolt_manager: &DoltManager,
+    cache: &StatusCache,
+    path: &str,
+    names: &[&str],
+) -> GroupCounts {
+    let statuses = if needs_project_list(names.iter().copied()) {
+        project_statuses(dolt_manager, cache, path).await.statuses
+    } else {
+        builtin_statuses()
+    };
+    count_by_group(names.iter().copied(), &statuses)
 }
 
 #[cfg(test)]
@@ -539,6 +601,57 @@ mod tests {
     async fn unresolvable_path_is_forbidden() {
         let (code, _) = call("Z:/no/such/parent/at/all/project").await;
         assert_eq!(code, StatusCode::FORBIDDEN);
+    }
+
+    // ── counting beads by group ──────────────────────────────────────────
+
+    fn groups(active: i64, wip: i64, frozen: i64, done: i64) -> GroupCounts {
+        GroupCounts { active, wip, frozen, done }
+    }
+
+    #[test]
+    fn builtin_statuses_fall_into_their_groups() {
+        let names = ["open", "in_progress", "blocked", "hooked", "deferred", "pinned", "closed"];
+        assert_eq!(count_by_group(names, &builtin_statuses()), groups(1, 3, 2, 1));
+    }
+
+    #[test]
+    fn a_status_missing_from_the_list_counts_as_active() {
+        assert_eq!(count_by_group(["mystery", "open"], &builtin_statuses()), groups(2, 0, 0, 0));
+    }
+
+    #[test]
+    fn old_synonyms_count_as_their_current_status() {
+        let names = ["done", "resolved", "pending"];
+        assert_eq!(count_by_group(names, &builtin_statuses()), groups(1, 0, 0, 2));
+    }
+
+    #[test]
+    fn a_tombstone_is_not_counted() {
+        assert_eq!(count_by_group(["tombstone", "open"], &builtin_statuses()), groups(1, 0, 0, 0));
+    }
+
+    #[test]
+    fn own_statuses_use_their_own_group() {
+        let list = statuses_with_custom(Some("inreview,shipped:done,icebox:frozen"));
+        let names = ["inreview", "inreview", "shipped", "icebox"];
+        assert_eq!(count_by_group(names, &list), groups(0, 2, 1, 1));
+    }
+
+    #[test]
+    fn nothing_to_count_gives_zeros() {
+        assert_eq!(count_by_group([], &builtin_statuses()), GroupCounts::default());
+    }
+
+    #[test]
+    fn built_in_names_do_not_need_the_project_list() {
+        let names = ["open", "closed", "hooked", "done", "pending", "tombstone"];
+        assert!(!needs_project_list(names));
+    }
+
+    #[test]
+    fn an_own_status_needs_the_project_list() {
+        assert!(needs_project_list(["open", "inreview"]));
     }
 
     #[test]

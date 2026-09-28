@@ -1,11 +1,12 @@
 /**
- * Bead counts by status for a project
+ * A project's beads counted by status group. Counted by the server only —
+ * `/api/beads` sends them as `counts`, `/api/projects` as `cachedCounts`.
  */
 export interface BeadCounts {
-  open: number;
-  in_progress: number;
-  inreview: number;
-  closed: number;
+  active: number;
+  wip: number;
+  frozen: number;
+  done: number;
 }
 
 /**
