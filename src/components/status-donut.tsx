@@ -2,12 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-interface BeadCounts {
-  open: number;
-  in_progress: number;
-  inreview: number;
-  closed: number;
-}
+import type { BeadCounts, StatusCategory } from "@/types";
 
 interface StatusDonutProps {
   beadCounts: BeadCounts;
@@ -22,15 +17,18 @@ interface StatusDonutProps {
   countsLoaded?: boolean;
 }
 
-// Status colors via CSS variables (semantic tokens from globals.css)
-const STATUS_COLORS = {
-  open: "hsl(var(--status-open))",
-  in_progress: "hsl(var(--status-progress))",
-  inreview: "hsl(var(--status-review))",
-  closed: "hsl(var(--status-closed))",
-};
+/**
+ * The four status groups in donut order, with their labels and colours
+ * (semantic tokens from globals.css, defined by every theme).
+ */
+const GROUPS: readonly { key: StatusCategory; label: string; color: string }[] = [
+  { key: "active", label: "Active", color: "hsl(var(--status-open))" },
+  { key: "wip", label: "In progress", color: "hsl(var(--status-progress))" },
+  { key: "frozen", label: "Frozen", color: "hsl(var(--text-muted))" },
+  { key: "done", label: "Done", color: "hsl(var(--status-closed))" },
+];
 
-// Custom tooltip showing all statuses
+// Custom tooltip showing every non-empty group
 function StatusTooltip({ beadCounts, total }: { beadCounts: BeadCounts; total: number }) {
   return (
     <div className="rounded-lg border border-b-strong bg-surface-raised px-3 py-2 shadow-lg">
@@ -38,34 +36,13 @@ function StatusTooltip({ beadCounts, total }: { beadCounts: BeadCounts; total: n
         {total} task{total !== 1 ? "s" : ""}
       </div>
       <div className="space-y-1">
-        {beadCounts.open > 0 && (
-          <div className="flex items-center gap-2 text-xs">
-            <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: STATUS_COLORS.open }} />
-            <span className="text-t-tertiary">Open</span>
-            <span className="ml-auto font-mono text-t-primary">{beadCounts.open}</span>
+        {GROUPS.filter((g) => beadCounts[g.key] > 0).map((g) => (
+          <div key={g.key} className="flex items-center gap-2 text-xs">
+            <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: g.color }} />
+            <span className="text-t-tertiary">{g.label}</span>
+            <span className="ml-auto font-mono text-t-primary">{beadCounts[g.key]}</span>
           </div>
-        )}
-        {beadCounts.in_progress > 0 && (
-          <div className="flex items-center gap-2 text-xs">
-            <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: STATUS_COLORS.in_progress }} />
-            <span className="text-t-tertiary">In Progress</span>
-            <span className="ml-auto font-mono text-t-primary">{beadCounts.in_progress}</span>
-          </div>
-        )}
-        {beadCounts.inreview > 0 && (
-          <div className="flex items-center gap-2 text-xs">
-            <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: STATUS_COLORS.inreview }} />
-            <span className="text-t-tertiary">In Review</span>
-            <span className="ml-auto font-mono text-t-primary">{beadCounts.inreview}</span>
-          </div>
-        )}
-        {beadCounts.closed > 0 && (
-          <div className="flex items-center gap-2 text-xs">
-            <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: STATUS_COLORS.closed }} />
-            <span className="text-t-tertiary">Closed</span>
-            <span className="ml-auto font-mono text-t-primary">{beadCounts.closed}</span>
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );
@@ -75,16 +52,12 @@ export function StatusDonut({ beadCounts, size = 40, className, countsLoaded = t
   const [isHovered, setIsHovered] = useState(false);
 
   const chartData = useMemo(() => {
-    return [
-      { status: "open", count: beadCounts.open, fill: STATUS_COLORS.open },
-      { status: "in_progress", count: beadCounts.in_progress, fill: STATUS_COLORS.in_progress },
-      { status: "inreview", count: beadCounts.inreview, fill: STATUS_COLORS.inreview },
-      { status: "closed", count: beadCounts.closed, fill: STATUS_COLORS.closed },
-    ].filter((item) => item.count > 0);
+    return GROUPS.map((g) => ({ status: g.key, count: beadCounts[g.key], fill: g.color }))
+      .filter((item) => item.count > 0);
   }, [beadCounts]);
 
   const total = useMemo(() => {
-    return beadCounts.open + beadCounts.in_progress + beadCounts.inreview + beadCounts.closed;
+    return GROUPS.reduce((sum, g) => sum + beadCounts[g.key], 0);
   }, [beadCounts]);
 
   // Dashed placeholder when counts haven't loaded yet, OR when the

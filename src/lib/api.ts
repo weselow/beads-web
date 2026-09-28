@@ -5,7 +5,7 @@
 
 import { apiUrl } from '@/lib/api-base';
 import { BeadsResponseSchema, PRStatusSchema, StatusesResponseSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
-import type { Project, Tag, Bead, StatusInfo, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryEntry, Agent } from '@/types';
+import type { Project, Tag, Bead, BeadCounts, StatusInfo, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryEntry, Agent } from '@/types';
 
 /**
  * Input for creating a new project
@@ -165,6 +165,7 @@ export const beads = {
       complete?: boolean;
       stale_reason?: string;
       jsonl_modified_at?: string;
+      counts?: BeadCounts;
     }>(
       `/api/beads?${params}`,
       { signal: AbortSignal.timeout(BEADS_READ_TIMEOUT_MS) }

@@ -9,7 +9,6 @@ import {
   createProject,
   type CreateProjectInput,
 } from "@/lib/db";
-import { countBeadsForHome } from "@/lib/home-counts";
 import type { Project, Tag, BeadCounts } from "@/types";
 
 interface UseProjectsResult {
@@ -62,7 +61,7 @@ export function useProjects(): UseProjectsResult {
       //   3. `zeroCounts` as a last-resort empty state. In that case
       //      `countsLoaded` stays false so the card can render a dashed
       //      placeholder donut instead of misleading "0/0/0/0" values.
-      const zeroCounts: BeadCounts = { open: 0, in_progress: 0, inreview: 0, closed: 0 };
+      const zeroCounts: BeadCounts = { active: 0, wip: 0, frozen: 0, done: 0 };
       setProjects((prev) => {
         const prevMap = new Map(prev.map((p) => [p.id, p]));
         return data.map((p) => {
@@ -74,12 +73,7 @@ export function useProjects(): UseProjectsResult {
           const beadCounts: BeadCounts = hasPrev
             ? prevProject!.beadCounts!
             : cached
-              ? {
-                  open: cached.open,
-                  in_progress: cached.in_progress,
-                  inreview: cached.inreview,
-                  closed: cached.closed,
-                }
+              ? { active: cached.active, wip: cached.wip, frozen: cached.frozen, done: cached.done }
               : zeroCounts;
 
           const dataSource = hasPrev
@@ -113,8 +107,9 @@ export function useProjects(): UseProjectsResult {
           if (beadsSignal.aborted) return null;
           const result = await loadProjectBeads(project.path, { withSource: true });
           if (beadsSignal.aborted) return null;
-          const beadCounts = countBeadsForHome(result.beads);
-          return { id: project.id, beadCounts, dataSource: result.source, beadError: undefined };
+          // Counted by the server — the page never counts beads itself.
+          if (!result.counts) throw new Error('The server sent no task counts');
+          return { id: project.id, beadCounts: result.counts, dataSource: result.source, beadError: undefined };
         } catch (err) {
           if (err instanceof DOMException && err.name === 'AbortError') return null;
           const message = err instanceof Error ? err.message : 'Unknown error';

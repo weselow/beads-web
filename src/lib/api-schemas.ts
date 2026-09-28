@@ -57,6 +57,16 @@ export const BeadsResponseSchema = z.object({
   stale_reason: z.string().optional(),
   /** Modification time of issues.jsonl; may be absent even with `stale_reason`. */
   jsonl_modified_at: z.string().optional(),
+  /**
+   * The project's beads by status group, counted by the server. Absent on a
+   * partial read (`updated_after` answered with only the changed beads).
+   */
+  counts: z.object({
+    active: z.number(),
+    wip: z.number(),
+    frozen: z.number(),
+    done: z.number(),
+  }).optional(),
 });
 
 /** `GET /api/statuses`: the project's statuses, each in one of four groups. */

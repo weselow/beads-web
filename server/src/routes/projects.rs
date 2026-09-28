@@ -260,6 +260,7 @@ pub fn project_routes() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::GroupCounts;
 
     fn make_project_with_tags() -> ProjectWithTags {
         ProjectWithTags {
@@ -279,10 +280,7 @@ mod tests {
         let entry = ProjectWithTagsAndCounts {
             project: make_project_with_tags(),
             cached_counts: Some(CachedCounts {
-                open: 3,
-                in_progress: 1,
-                inreview: 0,
-                closed: 2,
+                groups: GroupCounts { active: 3, wip: 1, frozen: 4, done: 2 },
                 data_source: Some("cli".to_string()),
                 updated_at: "2026-04-22T10:00:00Z".to_string(),
             }),
@@ -297,12 +295,15 @@ mod tests {
 
         // cachedCounts wrapper is camelCase
         assert!(json.contains("\"cachedCounts\":{"));
-        // CachedCounts inner fields are camelCase
-        assert!(json.contains("\"inProgress\":1"));
+        // CachedCounts carries the four groups, flattened
+        assert!(json.contains("\"active\":3"));
+        assert!(json.contains("\"wip\":1"));
+        assert!(json.contains("\"frozen\":4"));
+        assert!(json.contains("\"done\":2"));
+        assert!(!json.contains("\"groups\""));
         assert!(json.contains("\"dataSource\":\"cli\""));
         assert!(json.contains("\"updatedAt\":\"2026-04-22T10:00:00Z\""));
         // No snake_case leaks
-        assert!(!json.contains("\"in_progress\""));
         assert!(!json.contains("\"data_source\""));
         assert!(!json.contains("\"cached_counts\""));
     }
