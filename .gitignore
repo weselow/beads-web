@@ -44,6 +44,8 @@ next-env.d.ts
 
 # beads orchestration (user-specific)
 .beads/
+# bd 1.3.0 migration lock, written next to .beads/
+.beads.gate.lock
 AGENTS.md
 CLAUDE.md
 
