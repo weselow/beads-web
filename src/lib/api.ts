@@ -155,7 +155,14 @@ export const beads = {
   read: async (path: string, updatedAfter?: string) => {
     const params = new URLSearchParams({ path });
     if (updatedAfter) params.set('updated_after', updatedAfter);
-    const data = await fetchApi<{ beads: Bead[]; source?: string; comment_total?: number; complete?: boolean }>(
+    const data = await fetchApi<{
+      beads: Bead[];
+      source?: string;
+      comment_total?: number;
+      complete?: boolean;
+      stale_reason?: string;
+      jsonl_modified_at?: string;
+    }>(
       `/api/beads?${params}`
     );
     BeadsResponseSchema.parse(data);

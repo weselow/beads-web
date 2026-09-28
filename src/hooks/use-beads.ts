@@ -15,6 +15,7 @@ import {
   groupBeadsByStatus,
   assignTicketNumbers,
 } from "@/lib/beads-parser";
+import type { StaleSource } from "@/lib/beads-parser";
 import { isDoltProject } from "@/lib/utils";
 import type { Bead, BeadStatus } from "@/types";
 
@@ -42,6 +43,11 @@ export interface UseBeadsResult {
   isLoading: boolean;
   /** Any error that occurred during loading */
   error: Error | null;
+  /**
+   * Set while the board shows an old copy from issues.jsonl because bd failed;
+   * `null` when the data is current.
+   */
+  stale: StaleSource | null;
   /** Manually refresh beads, optionally bypassing incremental loading. */
   refresh: (options?: RefreshBeadsOptions) => Promise<void>;
 }
@@ -93,6 +99,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [dataSource, setDataSource] = useState<string | null>(null);
+  const [stale, setStale] = useState<StaleSource | null>(null);
 
   // Track if initial load has completed
   const hasLoadedRef = useRef(false);
@@ -103,6 +110,8 @@ export function useBeads(projectPath: string): UseBeadsResult {
   const commentTotalRef = useRef<number | null>(null);
   // Whether the last response was the whole list (journal-backed source).
   const completeRef = useRef(false);
+  // Whether the last response was an old copy; read by the poller.
+  const staleRef = useRef(false);
 
   /**
    * Load beads from the project directory
@@ -113,6 +122,8 @@ export function useBeads(projectPath: string): UseBeadsResult {
       setBeadsByStatus(EMPTY_GROUPED);
       setTicketNumbers(new Map());
       setDataSource(null);
+      setStale(null);
+      staleRef.current = false;
       setIsLoading(false);
       return;
     }
@@ -141,6 +152,9 @@ export function useBeads(projectPath: string): UseBeadsResult {
       commentTotalRef.current =
         typeof result.commentTotal === "number" ? result.commentTotal : null;
       completeRef.current = result.complete === true;
+      const nextStale = result.stale ?? null;
+      staleRef.current = nextStale !== null;
+      setStale(nextStale);
 
       // Compute max updated_at from fetched results
       const maxUpdated = fetchedBeads.reduce((max, b) => {
@@ -205,7 +219,9 @@ export function useBeads(projectPath: string): UseBeadsResult {
     lastUpdatedRef.current = null;
     commentTotalRef.current = null;
     completeRef.current = false;
+    staleRef.current = false;
     setDataSource(null);
+    setStale(null);
     void loadBeads({ full: true });
   }, [loadBeads]);
 
@@ -241,8 +257,16 @@ export function useBeads(projectPath: string): UseBeadsResult {
    * not report a total at all, fall back to a full read so no comment is lost.
    * A complete response (journal-backed source) already holds every comment,
    * so it never needs the second read.
+   *
+   * While the board shows an old copy, every poll is a full read: once bd
+   * recovers, merging its changes into the old copy would keep beads that
+   * were deleted since the copy was written.
    */
   const pollBeads = useCallback(async () => {
+    if (staleRef.current) {
+      await loadBeads({ full: true });
+      return;
+    }
     const previousTotal = commentTotalRef.current;
     await loadBeads();
     if (completeRef.current) return;
@@ -254,8 +278,11 @@ export function useBeads(projectPath: string): UseBeadsResult {
 
   // Poll database-backed sources. Filesystem projects using embedded Dolt may
   // have JSONL export disabled, so their file watcher has nothing to observe.
+  // An old copy is polled too, so the board notices by itself when bd recovers.
+  const isStale = stale !== null;
   useEffect(() => {
     const shouldPoll =
+      isStale ||
       isDoltProject(projectPath) ||
       (dataSource !== null && dataSource !== "jsonl");
     if (!projectPath || !shouldPoll) return;
@@ -268,7 +295,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
     }, period);
 
     return () => clearInterval(intervalId);
-  }, [projectPath, dataSource, pollBeads]);
+  }, [projectPath, dataSource, isStale, pollBeads]);
 
   return {
     beads,
@@ -276,6 +303,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
     ticketNumbers,
     isLoading,
     error,
+    stale,
     refresh,
   };
 }

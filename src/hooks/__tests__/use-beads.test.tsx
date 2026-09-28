@@ -347,3 +347,78 @@ describe('useBeads with the events journal', () => {
     await waitFor(() => expect(poll.interval).toBe(15_000));
   });
 });
+
+describe('useBeads with an old copy from issues.jsonl', () => {
+  const stale = {
+    reason: 'bd exited with exit code: 1\nHint: run bd doctor',
+    modifiedAt: '2026-09-28T20:17:39Z',
+  };
+
+  it('reports the old copy', async () => {
+    loadProjectBeadsMock.mockResolvedValueOnce({ beads: [baseBead], source: 'jsonl', stale });
+
+    const { result } = renderHook(() => useBeads('/tmp/project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.stale).toEqual(stale);
+  });
+
+  it('reports no old copy for a normal response', async () => {
+    loadProjectBeadsMock.mockResolvedValueOnce({ beads: [baseBead], source: 'jsonl', stale: null });
+
+    const { result } = renderHook(() => useBeads('/tmp/project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.stale).toBeNull();
+  });
+
+  it('does not poll a project that legitimately lives on issues.jsonl', async () => {
+    const poll = capturePoll();
+    loadProjectBeadsMock.mockResolvedValue({ beads: [baseBead], source: 'jsonl', stale: null });
+
+    const { result } = renderHook(() => useBeads('/tmp/project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(poll.current).toBeUndefined();
+  });
+
+  it('polls every 15 seconds with full reads while the copy is old', async () => {
+    const poll = capturePoll();
+    loadProjectBeadsMock.mockResolvedValue({ beads: [baseBead], source: 'jsonl', commentTotal: 0, stale });
+
+    const { result } = renderHook(() => useBeads('/tmp/project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(poll.interval).toBe(15_000));
+
+    await act(async () => {
+      poll.current?.();
+    });
+
+    await waitFor(() => expect(loadProjectBeadsMock).toHaveBeenCalledTimes(2));
+    // An incremental read would merge the recovered database into the old copy
+    // and keep beads deleted since; only a full read replaces it cleanly.
+    expect(loadProjectBeadsMock.mock.calls[1][1]).toEqual({
+      withSource: true,
+      updatedAfter: undefined,
+    });
+  });
+
+  it('clears the old copy once bd answers again', async () => {
+    const poll = capturePoll();
+    const recovered = { ...baseBead, id: 'test-2', title: 'Recovered' };
+    loadProjectBeadsMock
+      .mockResolvedValueOnce({ beads: [baseBead], source: 'jsonl', commentTotal: 0, stale })
+      .mockResolvedValue({ beads: [recovered], source: 'cli', commentTotal: 0, stale: null });
+
+    const { result } = renderHook(() => useBeads('/tmp/project'));
+    await waitFor(() => expect(result.current.stale).toEqual(stale));
+    await waitFor(() => expect(poll.current).toBeTypeOf('function'));
+
+    await act(async () => {
+      poll.current?.();
+    });
+
+    await waitFor(() => expect(result.current.stale).toBeNull());
+    expect(result.current.beads.map((b) => b.id)).toEqual(['test-2']);
+  });
+});

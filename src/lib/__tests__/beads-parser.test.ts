@@ -54,4 +54,41 @@ describe('loadProjectBeads', () => {
 
     expect(result.complete).toBeUndefined();
   });
+
+  it('reports an old copy when bd failed and the answer came from issues.jsonl', async () => {
+    mockFetch.mockResolvedValue(mockResponse({
+      beads: [rawBead],
+      comment_total: 0,
+      source: 'jsonl',
+      jsonl_modified_at: '2026-09-28T20:17:39Z',
+      stale_reason: 'bd exited with exit code: 1: Error: no beads database found\nHint: run bd init',
+    }));
+
+    const result = await loadProjectBeads('/test/path', { withSource: true });
+
+    expect(result.stale).toEqual({
+      reason: 'bd exited with exit code: 1: Error: no beads database found\nHint: run bd init',
+      modifiedAt: '2026-09-28T20:17:39Z',
+    });
+  });
+
+  it('reports an old copy without a date when the file date is unknown', async () => {
+    mockFetch.mockResolvedValue(mockResponse({
+      beads: [rawBead],
+      source: 'jsonl',
+      stale_reason: 'bd timed out',
+    }));
+
+    const result = await loadProjectBeads('/test/path', { withSource: true });
+
+    expect(result.stale).toEqual({ reason: 'bd timed out', modifiedAt: undefined });
+  });
+
+  it('reports no old copy for a normal response', async () => {
+    mockFetch.mockResolvedValue(mockResponse({ beads: [rawBead], source: 'jsonl' }));
+
+    const result = await loadProjectBeads('/test/path', { withSource: true });
+
+    expect(result.stale).toBeNull();
+  });
 });
