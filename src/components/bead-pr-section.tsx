@@ -20,12 +20,6 @@ import { PRFilesList } from "@/components/pr-files-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { usePRStatus } from "@/hooks/use-pr-status";
 import { toast } from "@/hooks/use-toast";
 import * as api from "@/lib/api";
@@ -343,31 +337,20 @@ export function BeadPRSection({
         <div className="rounded-lg border border-b-default bg-surface-raised/50 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-t-tertiary">No pull request created yet</p>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={handleCreatePR}
-                      disabled={isCreatingPR || bead.status !== "inreview"}
-                    >
-                      {isCreatingPR ? (
-                        <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                      ) : (
-                        <GitPullRequest className="size-3.5" aria-hidden="true" />
-                      )}
-                      Create PR
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {bead.status !== "inreview" && (
-                  <TooltipContent>Bead must be in review to create a PR</TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleCreatePR}
+              disabled={isCreatingPR}
+            >
+              {isCreatingPR ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <GitPullRequest className="size-3.5" aria-hidden="true" />
+              )}
+              Create PR
+            </Button>
           </div>
         </div>
       )}

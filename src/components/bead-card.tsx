@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 import { formatBeadId, formatWorktreePath, isBlocked, truncate } from "@/lib/bead-utils";
 import { getIssueTypeMeta } from "@/lib/issue-types";
+import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
 import { cn } from "@/lib/utils";
-import type { Bead, WorktreeStatus, PRStatus, StatusBadgeInfo } from "@/types";
+import type { Bead, WorktreeStatus, PRStatus, StatusBadgeInfo, StatusInfo } from "@/types";
 
 export interface BeadCardProps {
   bead: Bead;
@@ -21,6 +22,8 @@ export interface BeadCardProps {
   prStatus?: PRStatus;
   isSelected?: boolean;
   onSelect: (bead: Bead) => void;
+  /** The project's statuses, to tell done beads and blockers; bd's built-in ones by default */
+  statuses?: readonly StatusInfo[];
 }
 
 /**
@@ -28,11 +31,11 @@ export interface BeadCardProps {
  * Green: PR merged or checks passed
  * Yellow/amber: checks pending
  * Red: checks failed or needs rebase
- * Gray: no PR or default state, or bead is closed
+ * Gray: no PR or default state, or bead is done
  */
-function getWorktreeStatusColor(worktreeStatus?: WorktreeStatus, prStatus?: PRStatus, beadStatus?: string): string {
-  // Closed beads should not show colored status badges
-  if (beadStatus === 'closed') {
+function getWorktreeStatusColor(worktreeStatus?: WorktreeStatus, prStatus?: PRStatus, isDone = false): string {
+  // Done beads should not show colored status badges
+  if (isDone) {
     return "bg-surface-overlay/50 border-b-default/50";
   }
 
@@ -148,9 +151,12 @@ function getStatusBadgeClasses(variant: StatusBadgeInfo['variant']): string {
   }
 }
 
-export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatus, isSelected = false, onSelect }: BeadCardProps) {
+export function BeadCard({
+  bead, allBeads, ticketNumber, worktreeStatus, prStatus, isSelected = false, onSelect, statuses = BUILTIN_STATUSES,
+}: BeadCardProps) {
   const { layout } = useTheme();
-  const blocked = isBlocked(bead, allBeads);
+  const blocked = isBlocked(bead, allBeads, statuses);
+  const isDone = isDoneStatus(bead.status, statuses);
   const commentCount = (bead.comments ?? []).length;
   const relatedCount = (bead.relates_to ?? []).length;
 
@@ -184,7 +190,7 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
     <div
       className={cn(
         "rounded-md border p-2 space-y-1.5",
-        getWorktreeStatusColor(worktreeStatus, prStatus, bead.status)
+        getWorktreeStatusColor(worktreeStatus, prStatus, isDone)
       )}
     >
       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -216,8 +222,6 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
     </span>
   );
 
-  const isClosed = bead.status === 'closed';
-
   // ─── Layout: compact-row (Linear Minimal) ───
   if (layout === 'compact-row') {
     return (
@@ -228,7 +232,7 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
           "bg-card border border-transparent",
           "hover:bg-surface-overlay/50",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          isClosed && "opacity-40",
+          isDone && "opacity-40",
           isSelected && "bg-info/5 outline outline-1 outline-info/20"
         )}
       >
@@ -288,14 +292,14 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
           "hover:bg-surface-inset/30",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           blocked && "border-l-3 border-l-danger",
-          isClosed && "opacity-45",
+          isDone && "opacity-45",
           isSelected && "ring-2 ring-ring ring-offset-2 ring-offset-surface-base"
         )}
       >
         {/* Title first */}
         <div className={cn(
           "text-sm font-medium leading-snug text-t-primary mb-1.5",
-          isClosed && "line-through decoration-t-faint"
+          isDone && "line-through decoration-t-faint"
         )}>
           {truncate(bead.title, 70)}
         </div>

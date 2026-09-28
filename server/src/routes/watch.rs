@@ -1,8 +1,6 @@
 //! File watcher SSE endpoint for real-time file change notifications.
 //!
 //! Provides Server-Sent Events for monitoring changes to beads issue files.
-//! When the beads file changes, this module also recomputes epic statuses
-//! based on their children's statuses.
 
 use axum::{
     extract::Query,
@@ -18,7 +16,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, warn};
 
-use super::beads::{recompute_epic_statuses, resolve_issues_path};
+use super::beads::resolve_issues_path;
 use super::validate_path_security;
 
 /// Query parameters for the watch endpoint.
@@ -185,21 +183,6 @@ async fn run_watcher(
         };
 
         info!("File change detected: {:?}", file_event);
-
-        // Recompute epic statuses when beads file is modified
-        // This ensures epic status stays in sync with children
-        if change_type == "modified" || change_type == "created" {
-            match recompute_epic_statuses(&beads_file) {
-                Ok(updated_epics) => {
-                    if !updated_epics.is_empty() {
-                        info!("Updated epic statuses: {:?}", updated_epics);
-                    }
-                }
-                Err(e) => {
-                    warn!("Failed to recompute epic statuses: {}", e);
-                }
-            }
-        }
 
         let sse_event = Event::default()
             .data(serde_json::to_string(&file_event).unwrap_or_default());

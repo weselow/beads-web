@@ -6,7 +6,7 @@ import { BeadCard } from "@/components/bead-card";
 import { EpicCard } from "@/components/epic-card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Bead, BoardColumnStatus, Epic } from "@/types";
+import type { Bead, BoardColumnStatus, Epic, StatusInfo } from "@/types";
 
 /**
  * Get the CSS color value for a column's accent (used as --column-accent)
@@ -38,6 +38,8 @@ export interface KanbanColumnProps {
   onUpdate?: () => void;
   /** Board shows an old copy from issues.jsonl: writes are disabled */
   readOnly?: boolean;
+  /** The project's statuses, handed to the cards to tell done beads */
+  statuses?: readonly StatusInfo[];
 }
 
 /**
@@ -118,6 +120,7 @@ export function KanbanColumn({
   projectPath,
   onUpdate,
   readOnly = false,
+  statuses,
 }: KanbanColumnProps) {
   return (
     <div
@@ -160,6 +163,7 @@ export function KanbanColumn({
                   projectPath={projectPath}
                   onUpdate={onUpdate}
                   readOnly={readOnly}
+                  statuses={statuses}
                 />
               );
             }
@@ -172,6 +176,7 @@ export function KanbanColumn({
                 ticketNumber={ticketNumbers?.get(bead.id)}
                 isSelected={selectedBeadId === bead.id}
                 onSelect={onSelectBead}
+                statuses={statuses}
               />
             );
           })}

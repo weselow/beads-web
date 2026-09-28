@@ -41,6 +41,7 @@ import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser
 import { boardColumns, foldIntoBoardColumns } from "@/lib/board-fold";
 import { getIssueTypeMeta } from "@/lib/issue-types";
 import type { IssueTypeFilter } from "@/lib/issue-types";
+import { isDoneStatus } from "@/lib/statuses";
 import { isDoltProject } from "@/lib/utils";
 import type { Bead } from "@/types";
 
@@ -144,8 +145,11 @@ export default function KanbanBoard() {
     setFilters({ owners: newOwners });
   }, [filters.owners, setFilters]);
 
-  // Filter out closed beads to avoid unnecessary polling for finalized tasks
-  const beadIds = useMemo(() => beads.filter(b => b.status !== 'closed').map(b => b.id), [beads]);
+  // Filter out done beads to avoid unnecessary polling for finalized tasks
+  const beadIds = useMemo(
+    () => beads.filter(b => !isDoneStatus(b.status, statuses)).map(b => b.id),
+    [beads, statuses]
+  );
 
   // Worktree statuses for PR workflow (skip for dolt-only projects)
   const { statuses: worktreeStatuses } = useWorktreeStatuses(
@@ -276,7 +280,7 @@ export default function KanbanBoard() {
             <span className="uppercase">{project.name}_</span>
           </h1>
           <span className="font-mono text-xs text-t-muted uppercase tracking-widest">
-            {beads.length} beads // {beads.filter(b => b.issue_type === 'epic').length} epics // {beads.filter(b => isBlocked(b, beads)).length} blocked
+            {beads.length} beads // {beads.filter(b => b.issue_type === 'epic').length} epics // {beads.filter(b => isBlocked(b, beads, statuses)).length} blocked
           </span>
         </div>
       ) : (
@@ -382,6 +386,7 @@ export default function KanbanBoard() {
                 projectPath={project?.path}
                 onUpdate={refreshBeads}
                 readOnly={readOnly}
+                statuses={statuses}
               />
             ))}
           </div>
