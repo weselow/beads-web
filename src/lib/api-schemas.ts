@@ -46,6 +46,11 @@ export const BeadsResponseSchema = z.object({
    * from "nothing happened" without asking for the full payload.
    */
   comment_total: z.number().optional(),
+  /**
+   * `true` when `beads` is the whole list whatever `updated_after` said
+   * (journal-backed projects), so a bead missing from it was deleted.
+   */
+  complete: z.boolean().optional(),
 });
 
 export const PRChecksSchema = z.object({

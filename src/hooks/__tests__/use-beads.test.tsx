@@ -41,14 +41,16 @@ const baseBead: Bead = {
 };
 
 /**
- * Intercepts the 15-second polling timer so a test can fire one poll by hand.
+ * Intercepts the polling timer so a test can fire one poll by hand.
+ * `interval` records the period of the latest polling timer that was set up.
  */
-function capturePoll(): { current?: () => void } {
-  const poll: { current?: () => void } = {};
+function capturePoll(): { current?: () => void; interval?: number } {
+  const poll: { current?: () => void; interval?: number } = {};
   const realSetInterval = globalThis.setInterval;
   vi.spyOn(globalThis, 'setInterval').mockImplementation((handler, timeout, ...args) => {
-    if (timeout === 15_000) {
+    if (timeout === 15_000 || timeout === 5_000) {
       poll.current = handler as () => void;
+      poll.interval = timeout;
     }
     return realSetInterval(handler, timeout, ...args);
   });
@@ -102,6 +104,38 @@ describe('useBeads full refreshes', () => {
       updatedAfter: undefined,
     });
     expect(result.current.beads[0].comments[0].text).toBe('Visible');
+  });
+
+  it('never asks the server for a full re-read', async () => {
+    const poll = capturePoll();
+    // Every read reports a changed comment total, so the poll also makes its
+    // second, full read.
+    let total = 0;
+    loadProjectBeadsMock.mockImplementation(async () => ({
+      beads: [baseBead],
+      source: 'cli',
+      commentTotal: total++,
+    }));
+
+    const { result } = renderHook(() => useBeads('C:\project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(poll.current).toBeTypeOf('function'));
+
+    await act(async () => {
+      await result.current.refresh({ full: true });
+    });
+    act(() => {
+      watchedChange?.();
+    });
+    await waitFor(() => expect(loadProjectBeadsMock).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      poll.current?.();
+    });
+    await waitFor(() => expect(loadProjectBeadsMock).toHaveBeenCalledTimes(5));
+
+    for (const [, options] of loadProjectBeadsMock.mock.calls) {
+      expect(options).not.toHaveProperty('full');
+    }
   });
 
   it('uses a full refresh for JSONL watcher notifications', async () => {
@@ -238,5 +272,78 @@ describe('useBeads full refreshes', () => {
       withSource: true,
       updatedAfter: undefined,
     });
+  });
+});
+
+describe('useBeads with the events journal', () => {
+  const secondBead: Bead = {
+    ...baseBead,
+    id: 'test-2',
+    title: 'Second',
+    created_at: '2026-01-01T00:00:01Z',
+    updated_at: '2026-01-01T00:00:01Z',
+  };
+
+  it('replaces the list with a complete poll response, so a deleted bead disappears', async () => {
+    const poll = capturePoll();
+
+    loadProjectBeadsMock
+      .mockResolvedValueOnce({
+        beads: [baseBead, secondBead],
+        source: 'cli-journal',
+        commentTotal: 0,
+        complete: true,
+      })
+      // The second bead was deleted; the comment total moved as well, which
+      // would trigger the extra full read for an incremental source.
+      .mockResolvedValueOnce({
+        beads: [baseBead],
+        source: 'cli-journal',
+        commentTotal: 1,
+        complete: true,
+      });
+
+    const { result } = renderHook(() => useBeads('C:\project'));
+    await waitFor(() => expect(result.current.beads).toHaveLength(2));
+    await waitFor(() => expect(poll.current).toBeTypeOf('function'));
+
+    await act(async () => {
+      poll.current?.();
+    });
+
+    await waitFor(() => expect(result.current.beads).toHaveLength(1));
+    expect(result.current.beads[0].id).toBe(baseBead.id);
+    expect(result.current.beadsByStatus.open).toHaveLength(1);
+    // A complete response already holds every comment — no second read.
+    expect(loadProjectBeadsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('polls every 5 seconds for a journal-backed project', async () => {
+    const poll = capturePoll();
+    loadProjectBeadsMock.mockResolvedValueOnce({
+      beads: [baseBead],
+      source: 'cli-journal',
+      commentTotal: 0,
+      complete: true,
+    });
+
+    const { result } = renderHook(() => useBeads('C:\project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await waitFor(() => expect(poll.interval).toBe(5_000));
+  });
+
+  it('keeps polling every 15 seconds for other database sources', async () => {
+    const poll = capturePoll();
+    loadProjectBeadsMock.mockResolvedValueOnce({
+      beads: [baseBead],
+      source: 'cli',
+      commentTotal: 0,
+    });
+
+    const { result } = renderHook(() => useBeads('C:\project'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await waitFor(() => expect(poll.interval).toBe(15_000));
   });
 });

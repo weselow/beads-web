@@ -113,6 +113,11 @@ export interface LoadProjectBeadsResult {
    * records. `undefined` means the server did not report it.
    */
   commentTotal?: number;
+  /**
+   * `true` when `beads` is the whole list even on an incremental request, so a
+   * bead missing from it was deleted. `undefined` for the other sources.
+   */
+  complete?: boolean;
 }
 
 export async function loadProjectBeads(projectPath: string, options?: { updatedAfter?: string }): Promise<Bead[]>;
@@ -129,7 +134,12 @@ export async function loadProjectBeads(projectPath: string, options?: { withSour
     }
   }
   if (options?.withSource) {
-    return { beads: mapped, source: result.source, commentTotal: result.comment_total };
+    return {
+      beads: mapped,
+      source: result.source,
+      commentTotal: result.comment_total,
+      complete: result.complete,
+    };
   }
   return mapped;
 }
