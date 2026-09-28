@@ -14,10 +14,11 @@ import { useTheme } from "@/hooks/use-theme";
 import * as api from "@/lib/api";
 import { formatBeadId, isBlocked, truncate } from "@/lib/bead-utils";
 import { closeBead } from "@/lib/cli";
-import { computeEpicProgress } from "@/lib/epic-parser";
+import { canCloseEpic, computeEpicProgress } from "@/lib/epic-parser";
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
+import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
 import { cn, isDoltProject } from "@/lib/utils";
-import type { Bead, Epic, EpicProgress } from "@/types";
+import type { Bead, Epic, StatusInfo } from "@/types";
 
 export interface EpicCardProps {
   /** Epic bead with children */
@@ -40,14 +41,8 @@ export interface EpicCardProps {
   onUpdate?: () => void;
   /** Board shows an old copy from issues.jsonl: closing the epic is disabled */
   readOnly?: boolean;
-}
-
-/**
- * Compute epic progress from children
- * Uses epic-parser utility for proper dependency resolution
- */
-function computeProgress(epic: Epic, allBeads: Bead[]): EpicProgress {
-  return computeEpicProgress(epic, allBeads);
+  /** The project's statuses, to tell which children are done; bd's built-in ones by default */
+  statuses?: readonly StatusInfo[];
 }
 
 /**
@@ -79,6 +74,7 @@ export function EpicCard({
   projectPath,
   onUpdate,
   readOnly = false,
+  statuses = BUILTIN_STATUSES,
 }: EpicCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -101,9 +97,9 @@ export function EpicCard({
 
     const statusMap = new Map<string, ChildPRStatus>();
 
-    // Fetch PR status for all children in parallel (skip closed - no PR needed)
+    // Fetch PR status for all children in parallel (skip done ones - no PR needed)
     const results = await Promise.all(
-      children.filter(c => c.status !== 'closed').map(async (child) => {
+      children.filter(c => !isDoneStatus(c.status, statuses)).map(async (child) => {
         try {
           const prStatus = await api.git.prStatus(projectPath, child.id);
           if (prStatus.pr) {
@@ -133,7 +129,7 @@ export function EpicCard({
     if (isMountedRef.current) {
       setChildPRStatuses(statusMap);
     }
-  }, [projectPath, children]);
+  }, [projectPath, children, statuses]);
 
   // Fetch PR statuses on mount and set up auto-refresh interval
   useEffect(() => {
@@ -153,15 +149,15 @@ export function EpicCard({
     };
   }, [fetchChildPRStatuses]);
 
-  const progress = computeProgress(epic, allBeads);
+  const progress = computeEpicProgress(epic, allBeads, statuses);
   const progressPercentage = progress.total > 0
     ? Math.round((progress.completed / progress.total) * 100)
     : 0;
 
   const commentCount = (epic.comments ?? []).length;
 
-  // Show Close Epic button when all children are complete and epic is in review
-  const canCloseEpic = progressPercentage === 100 && epic.status === 'inreview';
+  // Show Close Epic button when every child is done and the epic is not done yet
+  const showCloseEpic = canCloseEpic(epic.status, progress, statuses);
 
   /**
    * Handle closing the epic
@@ -236,12 +232,13 @@ export function EpicCard({
         maxCollapsed={3}
         isExpanded={isExpanded}
         childPRStatuses={childPRStatuses}
+        statuses={statuses}
       />
     </div>
   );
 
   // Shared close button
-  const closeButton = canCloseEpic && (
+  const closeButton = showCloseEpic && (
     <div className="pt-2">
       <Button
         variant="outline"
@@ -366,7 +363,7 @@ export function EpicCard({
             <DependencyBadge
               deps={epic.deps}
               blockers={epic.blockers}
-              isBlocked={isBlocked(epic, allBeads)}
+              isBlocked={isBlocked(epic, allBeads, statuses)}
               onNavigate={onNavigateToDependency}
             />
             <Badge variant="outline" className="text-[10px] px-2 py-0.5 border-epic/30 text-epic bg-epic/20 font-semibold">EPIC</Badge>

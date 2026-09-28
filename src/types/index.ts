@@ -1,11 +1,12 @@
 /**
- * Bead counts by status for a project
+ * A project's beads counted by status group. Counted by the server only —
+ * `/api/beads` sends them as `counts`, `/api/projects` as `cachedCounts`.
  */
 export interface BeadCounts {
-  open: number;
-  in_progress: number;
-  inreview: number;
-  closed: number;
+  active: number;
+  wip: number;
+  frozen: number;
+  done: number;
 }
 
 /**
@@ -156,8 +157,8 @@ export interface LegacyPRInfo {
  */
 export interface EpicProgress {
   total: number;       // Total number of child tasks
-  completed: number;   // Number of children with status 'closed'
-  inProgress: number;  // Number of children with status 'in_progress'
+  completed: number;   // Number of children in the done group
+  inProgress: number;  // Number of children in the wip group
   blocked: number;     // Number of children with unresolved dependencies
 }
 

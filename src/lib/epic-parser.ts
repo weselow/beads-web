@@ -5,7 +5,8 @@
  * compute progress metrics, and identify blocking relationships.
  */
 
-import type { Bead, Epic, EpicProgress } from "@/types";
+import { getStatusCategory, isDoneStatus } from "@/lib/statuses";
+import type { Bead, Epic, EpicProgress, StatusInfo } from "@/types";
 
 /**
  * Separates epics from standalone tasks
@@ -91,113 +92,98 @@ export function buildEpicTree(epics: Epic[], allBeads: Bead[]): Epic[] {
 }
 
 /**
+ * Whether any dependency of the bead is found and is not in the done group.
+ * Dependencies missing from the map (deleted beads) do not block.
+ */
+function hasOpenDependency(
+  bead: Bead,
+  beadMap: ReadonlyMap<string, Bead>,
+  statuses: readonly StatusInfo[]
+): boolean {
+  return (bead.deps ?? []).some((depId) => {
+    const depBead = beadMap.get(depId);
+    return depBead !== undefined && !isDoneStatus(depBead.status, statuses);
+  });
+}
+
+/**
  * Computes progress metrics for an epic based on its children
+ *
+ * A child counts as completed when its status is in the done group, and as
+ * in progress when its status is in the wip group (`in_progress`, `hooked`,
+ * a project's own `inreview` and so on).
  *
  * @param epic - Epic bead with children
  * @param allBeads - Array of all beads to resolve children from
+ * @param statuses - The project's statuses, to tell the groups apart
  * @returns EpicProgress object with computed metrics
  *
  * @example
  * ```typescript
- * const progress = computeEpicProgress(epic, allBeads);
+ * const progress = computeEpicProgress(epic, allBeads, statuses);
  * console.log(`${progress.completed}/${progress.total} children completed`);
- * console.log(`${progress.blocked} children blocked`);
  * ```
  */
-export function computeEpicProgress(epic: Epic, allBeads: Bead[]): EpicProgress {
-  if (!epic.children || epic.children.length === 0) {
-    return {
-      total: 0,
-      completed: 0,
-      inProgress: 0,
-      blocked: 0,
-    };
+export function computeEpicProgress(
+  epic: Epic,
+  allBeads: Bead[],
+  statuses: readonly StatusInfo[]
+): EpicProgress {
+  const childIds = epic.children ?? [];
+  const beadMap = new Map((allBeads ?? []).map((b) => [b.id, b]));
+  if (beadMap.size === 0) {
+    return { total: childIds.length, completed: 0, inProgress: 0, blocked: 0 };
   }
 
-  if (!allBeads || allBeads.length === 0) {
-    return {
-      total: epic.children.length,
-      completed: 0,
-      inProgress: 0,
-      blocked: 0,
-    };
-  }
-
-  // Create lookup map for children
-  const beadMap = new Map<string, Bead>();
-  for (const bead of allBeads) {
-    beadMap.set(bead.id, bead);
-  }
-
-  // Resolve child beads
-  const children = epic.children
+  const children = childIds
     .map((childId) => beadMap.get(childId))
     .filter((child): child is Bead => child !== undefined);
 
-  // Count statuses
-  const completed = children.filter((c) => c.status === 'closed').length;
-  const inProgress = children.filter((c) => c.status === 'in_progress').length;
-
-  // Count blocked children (those with unresolved deps)
-  const blocked = children.filter((child) => {
-    if (!child.deps || child.deps.length === 0) {
-      return false;
-    }
-
-    // Check if any dependency is not yet completed
-    return child.deps.some((depId) => {
-      const depBead = beadMap.get(depId);
-      return depBead && depBead.status !== 'closed';
-    });
-  }).length;
-
   return {
     total: children.length,
-    completed,
-    inProgress,
-    blocked,
+    completed: children.filter((c) => isDoneStatus(c.status, statuses)).length,
+    inProgress: children.filter((c) => getStatusCategory(c.status, statuses) === 'wip').length,
+    blocked: children.filter((c) => hasOpenDependency(c, beadMap, statuses)).length,
   };
 }
 
 /**
- * Identifies tasks that are blocked by unresolved dependencies
+ * Whether the epic can be closed: it has children, every one of them is in
+ * the done group, and the epic itself is not done yet. The epic's own status
+ * does not matter otherwise.
+ */
+export function canCloseEpic(
+  epicStatus: string,
+  progress: EpicProgress,
+  statuses: readonly StatusInfo[]
+): boolean {
+  return (
+    progress.total > 0 &&
+    progress.completed === progress.total &&
+    !isDoneStatus(epicStatus, statuses)
+  );
+}
+
+/**
+ * Identifies tasks that are blocked by unresolved dependencies — ones whose
+ * dependency is found and is not in the done group.
  *
  * @param beads - Array of all beads to check
+ * @param statuses - The project's statuses, to tell which ones are done
  * @returns Array of beads that have blocking dependencies
  *
  * @example
  * ```typescript
- * const blockedTasks = getBlockedTasks(allBeads);
+ * const blockedTasks = getBlockedTasks(allBeads, statuses);
  * console.log(`${blockedTasks.length} tasks are currently blocked`);
- * blockedTasks.forEach(task => {
- *   console.log(`${task.id} blocked by: ${task.deps?.join(', ')}`);
- * });
  * ```
  */
-export function getBlockedTasks(beads: Bead[]): Bead[] {
+export function getBlockedTasks(beads: Bead[], statuses: readonly StatusInfo[]): Bead[] {
   if (!beads || beads.length === 0) {
     return [];
   }
-
-  // Create lookup map for fast access
-  const beadMap = new Map<string, Bead>();
-  for (const bead of beads) {
-    beadMap.set(bead.id, bead);
-  }
-
-  // Filter beads with unresolved dependencies
-  return beads.filter((bead) => {
-    if (!bead.deps || bead.deps.length === 0) {
-      return false;
-    }
-
-    // Check if any dependency is not yet completed
-    return bead.deps.some((depId) => {
-      const depBead = beadMap.get(depId);
-      // Blocked if dependency exists and is not closed
-      return depBead && depBead.status !== 'closed';
-    });
-  });
+  const beadMap = new Map(beads.map((b) => [b.id, b]));
+  return beads.filter((bead) => hasOpenDependency(bead, beadMap, statuses));
 }
 
 /**

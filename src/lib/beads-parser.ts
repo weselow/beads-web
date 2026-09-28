@@ -5,7 +5,7 @@
  * common operations.
  */
 
-import type { Bead, Epic, StatusInfo } from "@/types";
+import type { Bead, BeadCounts, Epic, StatusInfo } from "@/types";
 
 import * as api from './api';
 
@@ -85,6 +85,8 @@ export interface LoadProjectBeadsResult {
    * bead missing from it was deleted. `undefined` for the other sources.
    */
   complete?: boolean;
+  /** Beads by status group as the server counted them; absent on a partial read. */
+  counts?: BeadCounts;
 }
 
 export async function loadProjectBeads(projectPath: string, options?: { updatedAfter?: string }): Promise<Bead[]>;
@@ -105,6 +107,7 @@ export async function loadProjectBeads(projectPath: string, options?: { withSour
       source: result.source,
       commentTotal: result.comment_total,
       complete: result.complete,
+      counts: result.counts,
       stale: result.stale_reason === undefined
         ? null
         : { reason: result.stale_reason, modifiedAt: result.jsonl_modified_at },
@@ -265,73 +268,4 @@ export function groupByEpicStatus(beads: Bead[]): {
   }
 
   return { epics, standalone, children };
-}
-
-/**
- * Gets all child beads for a specific epic
- *
- * @param epicId - The ID of the epic to get children for
- * @param beads - Array of all beads to search
- * @returns Array of child beads belonging to the epic
- *
- * @example
- * ```typescript
- * const children = getEpicChildren('epic-123', allBeads);
- * console.log(`Epic has ${children.length} children`);
- * ```
- */
-export function getEpicChildren(epicId: string, beads: Bead[]): Bead[] {
-  if (!epicId || !beads || beads.length === 0) {
-    return [];
-  }
-
-  // Find the epic first
-  const epic = beads.find((b) => b.id === epicId);
-  if (!epic || !epic.children || epic.children.length === 0) {
-    return [];
-  }
-
-  // Create a lookup map for fast access
-  const beadMap = new Map<string, Bead>();
-  for (const bead of beads) {
-    beadMap.set(bead.id, bead);
-  }
-
-  // Resolve children
-  return epic.children
-    .map((childId) => beadMap.get(childId))
-    .filter((child): child is Bead => child !== undefined);
-}
-
-/**
- * Checks if an epic is completed (all children closed)
- *
- * @param epic - The epic bead to check
- * @param beads - Array of all beads to resolve children from
- * @returns True if all children are closed, false otherwise
- *
- * @example
- * ```typescript
- * if (isEpicCompleted(epic, allBeads)) {
- *   console.log('Epic is fully completed!');
- * }
- * ```
- */
-export function isEpicCompleted(epic: Epic, beads: Bead[]): boolean {
-  if (!epic.children || epic.children.length === 0) {
-    // Epic with no children is considered completed
-    return true;
-  }
-
-  if (!beads || beads.length === 0) {
-    return false;
-  }
-
-  const children = getEpicChildren(epic.id, beads);
-  if (children.length === 0) {
-    return false;
-  }
-
-  // All children must be closed
-  return children.every((child) => child.status === 'closed');
 }

@@ -4,8 +4,9 @@ import { Check, Circle, Clock, FileCheck, GitPullRequest, GitMerge, Link2 } from
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { truncate } from "@/lib/bead-utils";
+import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
 import { cn } from "@/lib/utils";
-import type { Bead } from "@/types";
+import type { Bead, StatusInfo } from "@/types";
 
 /**
  * PR status for a child task (used for icon display)
@@ -26,6 +27,8 @@ export interface SubtaskListProps {
   isExpanded?: boolean;
   /** PR status for each child task, keyed by bead ID */
   childPRStatuses?: Map<string, ChildPRStatus>;
+  /** The project's statuses, to strike through done children; bd's built-in ones by default */
+  statuses?: readonly StatusInfo[];
 }
 
 /**
@@ -155,6 +158,7 @@ export function SubtaskList({
   maxCollapsed = 3,
   isExpanded = false,
   childPRStatuses,
+  statuses = BUILTIN_STATUSES,
 }: SubtaskListProps) {
   if (childTasks.length === 0) {
     return (
@@ -191,8 +195,7 @@ export function SubtaskList({
           <div className="flex-1 min-w-0">
             <p className={cn(
               "text-xs font-medium group-hover:underline",
-              child.status === 'closed' && "line-through text-t-muted",
-              child.status !== 'closed' && "text-t-secondary"
+              isDoneStatus(child.status, statuses) ? "line-through text-t-muted" : "text-t-secondary"
             )}>
               {truncate(child.title, 50)}
             </p>

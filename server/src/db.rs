@@ -68,22 +68,38 @@ pub struct Tag {
     pub color: String,
 }
 
-/// Cached per-project bead counts by status.
+/// Bead counts by status group: every bd status belongs to one of four.
 ///
-/// Populated on every successful `/api/beads` read and consumed by
-/// `/api/projects` so the home page can render donut charts without
-/// waiting on a full beads fetch.
-///
-/// Note: the `inreview` column is kept even though bd 1.0.2 removed the
-/// built-in status — users may define a custom `status.custom=inreview`
-/// via `.beads/config.yaml` and we preserve compat.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CachedCounts {
+/// Computed in one place (`statuses::count_by_group`) for both the
+/// `/api/beads` response and the cache below.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupCounts {
+    pub active: i64,
+    pub wip: i64,
+    pub frozen: i64,
+    pub done: i64,
+}
+
+/// Counts by four exact status names — the columns beads-web 0.13 and older
+/// read. Still written so a rollback to 0.13 finds fresh numbers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LegacyCounts {
     pub open: i64,
     pub in_progress: i64,
     pub inreview: i64,
     pub closed: i64,
+}
+
+/// Cached per-project bead counts by status group.
+///
+/// Populated on every complete `/api/beads` read and consumed by
+/// `/api/projects` so the home page can render donut charts without
+/// waiting on a full beads fetch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CachedCounts {
+    #[serde(flatten)]
+    pub groups: GroupCounts,
     pub data_source: Option<String>,
     pub updated_at: String,
 }
@@ -241,16 +257,30 @@ impl Database {
                     updated_at TEXT NOT NULL
                 )",
             ),
+            // Groups next to the old per-status columns, which 0.13 still reads.
+            // No default: a row written before this or by 0.13 has unknown
+            // groups (NULL), not zero ones.
+            (
+                4,
+                "ALTER TABLE project_bead_counts ADD COLUMN active INTEGER;
+                 ALTER TABLE project_bead_counts ADD COLUMN wip INTEGER;
+                 ALTER TABLE project_bead_counts ADD COLUMN frozen INTEGER;
+                 ALTER TABLE project_bead_counts ADD COLUMN done INTEGER;",
+            ),
         ];
 
         let now = Utc::now().to_rfc3339();
         for (version, sql) in migrations {
             if version > current_version {
-                conn.execute_batch(sql)?;
-                conn.execute(
+                // One transaction: a migration of several statements either
+                // lands whole with its version row or not at all.
+                let tx = conn.unchecked_transaction()?;
+                tx.execute_batch(sql)?;
+                tx.execute(
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
                     params![version, now],
                 )?;
+                tx.commit()?;
                 tracing::info!("Applied migration v{}", version);
             }
         }
@@ -485,36 +515,35 @@ impl Database {
 
     // ===== Cached bead counts =====
 
-    /// Reads the cached bead counts for a project.
+    /// Reads the cached group counts for a project.
     ///
     /// Returns `Ok(None)` when no cache row exists yet (e.g. the project was
-    /// just created and `/api/beads` has not been called for it).
+    /// just created and `/api/beads` has not been called for it), or when the
+    /// row holds no groups — written before the upgrade or by 0.13.
     pub fn get_cached_counts(&self, project_id: &str) -> Result<Option<CachedCounts>, DbError> {
         let conn = self.conn.lock().unwrap();
         let row = conn.query_row(
-            "SELECT open, in_progress, inreview, closed, data_source, updated_at
+            "SELECT active, wip, frozen, done, data_source, updated_at
              FROM project_bead_counts WHERE project_id = ?1",
             params![project_id],
             |row| {
-                Ok(CachedCounts {
-                    open: row.get(0)?,
-                    in_progress: row.get(1)?,
-                    inreview: row.get(2)?,
-                    closed: row.get(3)?,
-                    data_source: row.get(4)?,
-                    updated_at: row.get(5)?,
-                })
+                let groups = (row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?);
+                Ok((groups, row.get(4)?, row.get(5)?))
             },
         );
 
         match row {
-            Ok(counts) => Ok(Some(counts)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Ok(((Some(active), Some(wip), Some(frozen), Some(done)), data_source, updated_at)) => {
+                let groups = GroupCounts { active, wip, frozen, done };
+                Ok(Some(CachedCounts { groups, data_source, updated_at }))
+            }
+            Ok(_) | Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(DbError::Sqlite(e)),
         }
     }
 
-    /// Upserts cached bead counts for a project.
+    /// Upserts cached bead counts for a project: the groups, plus the old
+    /// per-status columns for a rollback to 0.13.
     ///
     /// Inserts a new row if none exists, otherwise replaces all fields.
     /// Caller is expected to populate `updated_at` with a fresh timestamp.
@@ -522,27 +551,26 @@ impl Database {
         &self,
         project_id: &str,
         counts: &CachedCounts,
+        legacy: &LegacyCounts,
     ) -> Result<(), DbError> {
         let conn = self.conn.lock().unwrap();
+        let g = &counts.groups;
         conn.execute(
             "INSERT INTO project_bead_counts
-                (project_id, open, in_progress, inreview, closed, data_source, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                (project_id, open, in_progress, inreview, closed,
+                 active, wip, frozen, done, data_source, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(project_id) DO UPDATE SET
-                open = excluded.open,
-                in_progress = excluded.in_progress,
-                inreview = excluded.inreview,
-                closed = excluded.closed,
-                data_source = excluded.data_source,
-                updated_at = excluded.updated_at",
+                open = excluded.open, in_progress = excluded.in_progress,
+                inreview = excluded.inreview, closed = excluded.closed,
+                active = excluded.active, wip = excluded.wip,
+                frozen = excluded.frozen, done = excluded.done,
+                data_source = excluded.data_source, updated_at = excluded.updated_at",
             params![
                 project_id,
-                counts.open,
-                counts.in_progress,
-                counts.inreview,
-                counts.closed,
-                counts.data_source,
-                counts.updated_at,
+                legacy.open, legacy.in_progress, legacy.inreview, legacy.closed,
+                g.active, g.wip, g.frozen, g.done,
+                counts.data_source, counts.updated_at,
             ],
         )?;
         Ok(())
@@ -935,36 +963,148 @@ mod tests {
 
     // ── cached bead counts ──────────────────────────────────────────
 
+    fn column_names(db: &Database, table: &str) -> Vec<String> {
+        let conn = db.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        let names = stmt.query_map([], |row| row.get::<_, String>(1)).unwrap();
+        names.collect::<SqliteResult<Vec<_>>>().unwrap()
+    }
+
+    fn groups(active: i64, wip: i64, frozen: i64, done: i64) -> GroupCounts {
+        GroupCounts { active, wip, frozen, done }
+    }
+
+    fn cached(groups: GroupCounts, source: &str, at: &str) -> CachedCounts {
+        CachedCounts { groups, data_source: Some(source.to_string()), updated_at: at.to_string() }
+    }
+
+    fn legacy(open: i64, in_progress: i64, inreview: i64, closed: i64) -> LegacyCounts {
+        LegacyCounts { open, in_progress, inreview, closed }
+    }
+
+    fn make_project(db: &Database, path: &str) -> Project {
+        let input = CreateProjectInput { name: path.to_string(), path: path.to_string(), local_path: None };
+        db.create_project(input).unwrap()
+    }
+
+    /// Schema as 0.13 left it: migrations 1-3 applied, one counts row.
+    fn database_at_v3() -> Database {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
+                 last_opened TEXT NOT NULL, created_at TEXT NOT NULL, local_path TEXT, archived_at TEXT);
+             CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+             INSERT INTO schema_migrations VALUES (1, 'x'), (2, 'x'), (3, 'x');
+             CREATE TABLE project_bead_counts (
+                 project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+                 open INTEGER NOT NULL DEFAULT 0, in_progress INTEGER NOT NULL DEFAULT 0,
+                 inreview INTEGER NOT NULL DEFAULT 0, closed INTEGER NOT NULL DEFAULT 0,
+                 data_source TEXT, updated_at TEXT NOT NULL);
+             INSERT INTO projects VALUES ('p1', 'Old', '/old', 'x', 'x', NULL, NULL);
+             INSERT INTO project_bead_counts VALUES ('p1', 4, 2, 1, 9, 'cli', '2026-09-01T00:00:00Z');",
+        )
+        .unwrap();
+        let db = Database { conn: Mutex::new(conn) };
+        db.init_schema().unwrap();
+        db
+    }
+
+    #[test]
+    fn test_counts_table_has_group_columns_and_keeps_old_ones() {
+        let db = Database::new_in_memory().unwrap();
+        let columns = column_names(&db, "project_bead_counts");
+        for name in ["open", "in_progress", "inreview", "closed", "active", "wip", "frozen", "done"] {
+            assert!(columns.iter().any(|c| c == name), "missing column {name}: {columns:?}");
+        }
+    }
+
+    #[test]
+    fn test_upgrade_from_v3_keeps_old_rows_and_columns() {
+        let db = database_at_v3();
+        let conn = db.conn.lock().unwrap();
+        let old: (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT open, in_progress, inreview, closed FROM project_bead_counts WHERE project_id = 'p1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(old, (4, 2, 1, 9));
+    }
+
+    #[test]
+    fn test_a_row_without_groups_is_not_served_as_counts() {
+        // Written before the upgrade: the groups are unknown, not zero.
+        let db = database_at_v3();
+        assert!(db.get_cached_counts("p1").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_old_version_can_still_write_and_read_after_upgrade() {
+        // The statements 0.13 runs, word for word.
+        let db = database_at_v3();
+        let conn = db.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO project_bead_counts
+                (project_id, open, in_progress, inreview, closed, data_source, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(project_id) DO UPDATE SET
+                open = excluded.open, in_progress = excluded.in_progress,
+                inreview = excluded.inreview, closed = excluded.closed,
+                data_source = excluded.data_source, updated_at = excluded.updated_at",
+            params!["p1", 1, 1, 1, 1, "cli", "2026-09-02T00:00:00Z"],
+        )
+        .unwrap();
+        let open: i64 = conn
+            .query_row(
+                "SELECT open, in_progress, inreview, closed, data_source, updated_at
+                 FROM project_bead_counts WHERE project_id = ?1",
+                params!["p1"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(open, 1);
+    }
+
+    #[test]
+    fn test_upsert_fills_old_columns_for_rollback() {
+        let db = Database::new_in_memory().unwrap();
+        let project = make_project(&db, "/legacy");
+        let counts = cached(groups(5, 2, 1, 7), "cli", "2026-09-29T10:00:00Z");
+        db.upsert_cached_counts(&project.id, &counts, &legacy(3, 1, 1, 7)).unwrap();
+        let conn = db.conn.lock().unwrap();
+        let old: (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT open, in_progress, inreview, closed FROM project_bead_counts WHERE project_id = ?1",
+                params![project.id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(old, (3, 1, 1, 7));
+    }
+
+    #[test]
+    fn test_cached_counts_serialize_groups_in_camel_case() {
+        let json = serde_json::to_value(cached(groups(1, 2, 3, 4), "cli", "t")).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"active": 1, "wip": 2, "frozen": 3, "done": 4, "dataSource": "cli", "updatedAt": "t"})
+        );
+    }
+
     #[test]
     fn test_cached_counts_insert_and_get() {
         let db = Database::new_in_memory().unwrap();
-        let project = db
-            .create_project(CreateProjectInput {
-                name: "Counts".to_string(),
-                path: "/counts".to_string(),
-                local_path: None,
-            })
-            .unwrap();
+        let project = make_project(&db, "/counts");
 
         // Initially no cache row
-        let initial = db.get_cached_counts(&project.id).unwrap();
-        assert!(initial.is_none(), "expected no cache row before first upsert");
+        assert!(db.get_cached_counts(&project.id).unwrap().is_none());
 
-        let counts = CachedCounts {
-            open: 3,
-            in_progress: 1,
-            inreview: 0,
-            closed: 7,
-            data_source: Some("cli".to_string()),
-            updated_at: "2026-04-22T10:00:00Z".to_string(),
-        };
-        db.upsert_cached_counts(&project.id, &counts).unwrap();
+        let counts = cached(groups(3, 1, 2, 7), "cli", "2026-04-22T10:00:00Z");
+        db.upsert_cached_counts(&project.id, &counts, &legacy(3, 1, 0, 7)).unwrap();
 
         let fetched = db.get_cached_counts(&project.id).unwrap().unwrap();
-        assert_eq!(fetched.open, 3);
-        assert_eq!(fetched.in_progress, 1);
-        assert_eq!(fetched.inreview, 0);
-        assert_eq!(fetched.closed, 7);
+        assert_eq!(fetched.groups, groups(3, 1, 2, 7));
         assert_eq!(fetched.data_source.as_deref(), Some("cli"));
         assert_eq!(fetched.updated_at, "2026-04-22T10:00:00Z");
     }
@@ -972,39 +1112,15 @@ mod tests {
     #[test]
     fn test_cached_counts_upsert_replaces_existing() {
         let db = Database::new_in_memory().unwrap();
-        let project = db
-            .create_project(CreateProjectInput {
-                name: "Upsert".to_string(),
-                path: "/upsert".to_string(),
-                local_path: None,
-            })
-            .unwrap();
+        let project = make_project(&db, "/upsert");
 
-        let first = CachedCounts {
-            open: 10,
-            in_progress: 2,
-            inreview: 1,
-            closed: 0,
-            data_source: Some("jsonl".to_string()),
-            updated_at: "2026-04-22T10:00:00Z".to_string(),
-        };
-        db.upsert_cached_counts(&project.id, &first).unwrap();
-
-        let second = CachedCounts {
-            open: 8,
-            in_progress: 3,
-            inreview: 2,
-            closed: 5,
-            data_source: Some("dolt-direct".to_string()),
-            updated_at: "2026-04-22T11:00:00Z".to_string(),
-        };
-        db.upsert_cached_counts(&project.id, &second).unwrap();
+        let first = cached(groups(10, 2, 0, 0), "jsonl", "2026-04-22T10:00:00Z");
+        db.upsert_cached_counts(&project.id, &first, &legacy(10, 2, 1, 0)).unwrap();
+        let second = cached(groups(8, 5, 1, 5), "dolt-direct", "2026-04-22T11:00:00Z");
+        db.upsert_cached_counts(&project.id, &second, &legacy(8, 3, 2, 5)).unwrap();
 
         let fetched = db.get_cached_counts(&project.id).unwrap().unwrap();
-        assert_eq!(fetched.open, 8);
-        assert_eq!(fetched.in_progress, 3);
-        assert_eq!(fetched.inreview, 2);
-        assert_eq!(fetched.closed, 5);
+        assert_eq!(fetched.groups, groups(8, 5, 1, 5));
         assert_eq!(fetched.data_source.as_deref(), Some("dolt-direct"));
         assert_eq!(fetched.updated_at, "2026-04-22T11:00:00Z");
 
@@ -1023,26 +1139,9 @@ mod tests {
     #[test]
     fn test_cached_counts_cascade_on_project_delete() {
         let db = Database::new_in_memory().unwrap();
-        let project = db
-            .create_project(CreateProjectInput {
-                name: "Cascade".to_string(),
-                path: "/cascade".to_string(),
-                local_path: None,
-            })
-            .unwrap();
-
-        db.upsert_cached_counts(
-            &project.id,
-            &CachedCounts {
-                open: 1,
-                in_progress: 0,
-                inreview: 0,
-                closed: 0,
-                data_source: None,
-                updated_at: "2026-04-22T10:00:00Z".to_string(),
-            },
-        )
-        .unwrap();
+        let project = make_project(&db, "/cascade");
+        let counts = cached(groups(1, 0, 0, 0), "cli", "2026-04-22T10:00:00Z");
+        db.upsert_cached_counts(&project.id, &counts, &legacy(1, 0, 0, 0)).unwrap();
 
         assert!(db.get_cached_counts(&project.id).unwrap().is_some());
 

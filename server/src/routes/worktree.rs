@@ -1486,43 +1486,78 @@ pub struct RebaseSiblingResult {
 pub struct RebaseSiblingsResponse {
     /// Results for each sibling worktree.
     pub results: Vec<RebaseSiblingResult>,
-    /// Bead IDs that were skipped (not in 'inreview' status).
+    /// Bead IDs that were skipped (no open PR for their branch).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub skipped: Vec<String>,
 }
 
-/// Minimal bead structure for status checking.
-#[derive(Deserialize)]
-struct BeadStatus {
-    id: String,
-    status: String,
+/// Read the PR state from `gh pr view --json state` output, lower-cased:
+/// "open", "merged" or "closed". None when the output has no state.
+fn parse_pr_state(stdout: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(stdout).ok()?;
+    json["state"].as_str().map(str::to_lowercase)
 }
 
-/// Get the status of a bead from the issues.jsonl file.
-///
-/// Returns None if the bead is not found or the file cannot be read.
-fn get_bead_status(repo_path: &Path, bead_id: &str) -> Option<String> {
-    let issues_path = repo_path.join(".beads").join("issues.jsonl");
+/// State of the PR opened from a branch; None when there is no PR or gh fails.
+async fn get_pr_state(repo_path: &str, branch: &str) -> Option<String> {
+    let output = Command::new("gh")
+        .args(["pr", "view", branch, "--json", "state"])
+        .current_dir(repo_path)
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_pr_state(&String::from_utf8_lossy(&output.stdout))
+}
 
-    let contents = std::fs::read_to_string(&issues_path).ok()?;
-
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.is_empty() {
+/// Split siblings, each paired with the state of its PR, into those to
+/// rebase (the PR is open) and the bead IDs of the rest, which are skipped.
+/// A branch without a PR is still being worked on and is left alone.
+fn split_by_open_pr(
+    siblings: Vec<(WorktreeEntry, Option<String>)>,
+) -> (Vec<WorktreeEntry>, Vec<String>) {
+    let mut to_rebase = Vec::new();
+    let mut skipped = Vec::new();
+    for (sibling, pr_state) in siblings {
+        if pr_state.as_deref() == Some("open") {
+            to_rebase.push(sibling);
             continue;
         }
-
-        if let Ok(bead) = serde_json::from_str::<BeadStatus>(line) {
-            if bead.id == bead_id {
-                return Some(bead.status);
-            }
-        }
+        tracing::info!(
+            "Skipping rebase for bead {:?} (PR state: {:?})",
+            sibling.bead_id,
+            pr_state
+        );
+        skipped.extend(sibling.bead_id);
     }
-
-    None
+    (to_rebase, skipped)
 }
 
-/// Rebase all sibling worktrees onto latest origin/main.
+/// Rebase the siblings whose PR is open; returns the results and the skipped bead IDs.
+async fn rebase_open_pr_siblings(
+    repo_path: &str,
+    siblings: Vec<WorktreeEntry>,
+) -> (Vec<RebaseSiblingResult>, Vec<String>) {
+    let mut with_states = Vec::new();
+    for sibling in siblings {
+        let pr_state = get_pr_state(repo_path, &sibling.branch).await;
+        with_states.push((sibling, pr_state));
+    }
+    let (to_rebase, skipped) = split_by_open_pr(with_states);
+
+    let mut results = Vec::new();
+    for sibling in to_rebase {
+        if let Some(bead_id) = sibling.bead_id.as_deref() {
+            results.push(rebase_single_worktree(&sibling.path, bead_id).await);
+        }
+    }
+    (results, skipped)
+}
+
+/// Rebase sibling worktrees onto latest origin/main — only those whose
+/// branch has an open PR; the rest are reported as skipped.
 ///
 /// # Endpoint
 ///
@@ -1599,9 +1634,6 @@ pub async fn rebase_siblings(Json(request): Json<RebaseSiblingsRequest>) -> impl
         })
         .collect();
 
-    let mut results = Vec::new();
-    let mut skipped = Vec::new();
-
     // Fetch latest from origin once (in main repo)
     let fetch_output = Command::new("git")
         .args(["fetch", "origin"])
@@ -1619,29 +1651,7 @@ pub async fn rebase_siblings(Json(request): Json<RebaseSiblingsRequest>) -> impl
             .into_response();
     }
 
-    // Rebase each sibling that is in 'inreview' status
-    for sibling in siblings {
-        let bead_id = match sibling.bead_id {
-            Some(id) => id,
-            None => continue,
-        };
-
-        // Only rebase beads that are in 'inreview' status
-        // Skip beads that are in_progress, open, or have unknown status
-        let status = get_bead_status(repo_path, &bead_id);
-        if status.as_deref() != Some("inreview") {
-            tracing::info!(
-                "Skipping rebase for bead {} (status: {:?})",
-                bead_id,
-                status
-            );
-            skipped.push(bead_id);
-            continue;
-        }
-
-        let result = rebase_single_worktree(&sibling.path, &bead_id).await;
-        results.push(result);
-    }
+    let (results, skipped) = rebase_open_pr_siblings(&request.repo_path, siblings).await;
 
     Json(RebaseSiblingsResponse { results, skipped }).into_response()
 }
@@ -1882,46 +1892,49 @@ mod tests {
     }
 
     #[test]
-    fn test_get_bead_status_parses_jsonl() {
-        use std::io::Write;
-        use tempfile::tempdir;
-
-        // Create a temporary directory with a .beads/issues.jsonl file
-        let temp_dir = tempdir().unwrap();
-        let beads_dir = temp_dir.path().join(".beads");
-        std::fs::create_dir(&beads_dir).unwrap();
-        let issues_path = beads_dir.join("issues.jsonl");
-
-        let mut file = std::fs::File::create(&issues_path).unwrap();
-        writeln!(file, r#"{{"id": "BD-001", "title": "Test 1", "status": "inreview"}}"#).unwrap();
-        writeln!(file, r#"{{"id": "BD-002", "title": "Test 2", "status": "in_progress"}}"#).unwrap();
-        writeln!(file, r#"{{"id": "BD-003", "title": "Test 3", "status": "open"}}"#).unwrap();
-
-        // Test finding existing beads
-        assert_eq!(
-            get_bead_status(temp_dir.path(), "BD-001"),
-            Some("inreview".to_string())
-        );
-        assert_eq!(
-            get_bead_status(temp_dir.path(), "BD-002"),
-            Some("in_progress".to_string())
-        );
-        assert_eq!(
-            get_bead_status(temp_dir.path(), "BD-003"),
-            Some("open".to_string())
-        );
-
-        // Test non-existent bead
-        assert_eq!(get_bead_status(temp_dir.path(), "BD-999"), None);
+    fn test_parse_pr_state_lowercases_gh_output() {
+        assert_eq!(parse_pr_state(r#"{"state":"OPEN"}"#), Some("open".to_string()));
+        assert_eq!(parse_pr_state(r#"{"state":"MERGED"}"#), Some("merged".to_string()));
+        assert_eq!(parse_pr_state(r#"{"state":"CLOSED"}"#), Some("closed".to_string()));
     }
 
     #[test]
-    fn test_get_bead_status_missing_file() {
-        use tempfile::tempdir;
+    fn test_parse_pr_state_without_state_is_none() {
+        assert_eq!(parse_pr_state("{}"), None);
+        assert_eq!(parse_pr_state("no pull requests found"), None);
+        assert_eq!(parse_pr_state(""), None);
+    }
 
-        let temp_dir = tempdir().unwrap();
-        // No .beads directory - should return None gracefully
-        assert_eq!(get_bead_status(temp_dir.path(), "BD-001"), None);
+    fn sibling(bead_id: &str) -> WorktreeEntry {
+        WorktreeEntry {
+            path: format!("repo/.worktrees/bd-{}", bead_id),
+            branch: format!("bd-{}", bead_id),
+            bead_id: Some(bead_id.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_split_by_open_pr_rebases_only_open_prs() {
+        let siblings = vec![
+            (sibling("BD-001"), Some("open".to_string())),
+            (sibling("BD-002"), Some("merged".to_string())),
+            (sibling("BD-003"), Some("closed".to_string())),
+            (sibling("BD-004"), None),
+            (sibling("BD-005"), Some("open".to_string())),
+        ];
+
+        let (to_rebase, skipped) = split_by_open_pr(siblings);
+
+        let rebased: Vec<_> = to_rebase.iter().map(|w| w.bead_id.clone().unwrap()).collect();
+        assert_eq!(rebased, vec!["BD-001", "BD-005"]);
+        assert_eq!(skipped, vec!["BD-002", "BD-003", "BD-004"]);
+    }
+
+    #[test]
+    fn test_split_by_open_pr_empty() {
+        let (to_rebase, skipped) = split_by_open_pr(vec![]);
+        assert!(to_rebase.is_empty());
+        assert!(skipped.is_empty());
     }
 
     #[test]

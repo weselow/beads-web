@@ -6,7 +6,7 @@ import { BeadCard } from "@/components/bead-card";
 import { EpicCard } from "@/components/epic-card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Bead, Epic, StatusCategory } from "@/types";
+import type { Bead, Epic, StatusCategory, StatusInfo } from "@/types";
 
 export interface ColumnColors {
   /** CSS colour for --column-accent, which some themes paint cards with */
@@ -76,6 +76,8 @@ export interface KanbanColumnProps {
   onUpdate?: () => void;
   /** Board shows an old copy from issues.jsonl: writes are disabled */
   readOnly?: boolean;
+  /** The project's statuses, handed to the cards to tell done beads */
+  statuses?: readonly StatusInfo[];
 }
 
 /**
@@ -98,6 +100,7 @@ function ColumnCard({ bead, ticketNumbers, selectedBeadId, onSelectBead, onChild
     ticketNumber: ticketNumbers?.get(bead.id),
     isSelected: selectedBeadId === bead.id,
     onSelect: onSelectBead,
+    statuses: rest.statuses,
   };
   if (!isEpic(bead)) return <BeadCard bead={bead} {...common} />;
   return (

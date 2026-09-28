@@ -9,6 +9,8 @@ import {
   truncate,
   isBlocked,
 } from '@/lib/bead-utils';
+import { BUILTIN_STATUSES } from '@/lib/statuses';
+import type { StatusInfo } from '@/types';
 
 describe('formatBeadId', () => {
   it('preserves and upper-cases the workspace prefix', () => {
@@ -102,12 +104,12 @@ describe('truncate', () => {
 describe('isBlocked', () => {
   it('returns false for closed tasks even with open deps', () => {
     const allBeads = [{ id: 'dep1', status: 'open' }];
-    expect(isBlocked({ status: 'closed', deps: ['dep1'] }, allBeads)).toBe(false);
+    expect(isBlocked({ status: 'closed', deps: ['dep1'] }, allBeads, BUILTIN_STATUSES)).toBe(false);
   });
 
   it('returns false for open tasks whose only dep is closed', () => {
     const allBeads = [{ id: 'dep1', status: 'closed' }];
-    expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads)).toBe(false);
+    expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads, BUILTIN_STATUSES)).toBe(false);
   });
 
   it('returns true when at least one dep is not closed (one open, one closed)', () => {
@@ -115,28 +117,42 @@ describe('isBlocked', () => {
       { id: 'dep1', status: 'closed' },
       { id: 'dep2', status: 'open' },
     ];
-    expect(isBlocked({ status: 'open', deps: ['dep1', 'dep2'] }, allBeads)).toBe(true);
+    expect(isBlocked({ status: 'open', deps: ['dep1', 'dep2'] }, allBeads, BUILTIN_STATUSES)).toBe(true);
   });
 
   it('returns true when dep is in_progress', () => {
     const allBeads = [{ id: 'dep1', status: 'in_progress' }];
-    expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads)).toBe(true);
+    expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads, BUILTIN_STATUSES)).toBe(true);
   });
 
   it('returns false when dep references a missing bead', () => {
     const allBeads = [{ id: 'other', status: 'open' }];
-    expect(isBlocked({ status: 'open', deps: ['ghost'] }, allBeads)).toBe(false);
+    expect(isBlocked({ status: 'open', deps: ['ghost'] }, allBeads, BUILTIN_STATUSES)).toBe(false);
   });
 
   it('returns false for open task with empty deps array', () => {
-    expect(isBlocked({ status: 'open', deps: [] }, [])).toBe(false);
+    expect(isBlocked({ status: 'open', deps: [] }, [], BUILTIN_STATUSES)).toBe(false);
   });
 
   it('returns false for open task without deps property', () => {
-    expect(isBlocked({ status: 'open' }, [])).toBe(false);
+    expect(isBlocked({ status: 'open' }, [], BUILTIN_STATUSES)).toBe(false);
   });
 
   it('returns false when deps is null', () => {
-    expect(isBlocked({ status: 'open', deps: null }, [])).toBe(false);
+    expect(isBlocked({ status: 'open', deps: null }, [], BUILTIN_STATUSES)).toBe(false);
+  });
+
+  describe('with a project status in the done group', () => {
+    const statuses: StatusInfo[] = [...BUILTIN_STATUSES, { name: 'shipped', category: 'done', builtin: false }];
+
+    it('does not block on a dependency that is done under its own status', () => {
+      const allBeads = [{ id: 'dep1', status: 'shipped' }];
+      expect(isBlocked({ status: 'open', deps: ['dep1'] }, allBeads, statuses)).toBe(false);
+    });
+
+    it('never treats a done task as blocked', () => {
+      const allBeads = [{ id: 'dep1', status: 'open' }];
+      expect(isBlocked({ status: 'shipped', deps: ['dep1'] }, allBeads, statuses)).toBe(false);
+    });
   });
 });
