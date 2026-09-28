@@ -313,7 +313,6 @@ describe('useBeads with the events journal', () => {
 
     await waitFor(() => expect(result.current.beads).toHaveLength(1));
     expect(result.current.beads[0].id).toBe(baseBead.id);
-    expect(result.current.beadsByStatus.open).toHaveLength(1);
     // A complete response already holds every comment — no second read.
     expect(loadProjectBeadsMock).toHaveBeenCalledTimes(2);
   });

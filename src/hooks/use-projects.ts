@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 import * as api from "@/lib/api";
-import { loadProjectBeads, groupBeadsByStatus } from "@/lib/beads-parser";
+import { loadProjectBeads } from "@/lib/beads-parser";
 import {
   getProjectsWithTags,
   createProject,
   type CreateProjectInput,
 } from "@/lib/db";
+import { countBeadsForHome } from "@/lib/home-counts";
 import type { Project, Tag, BeadCounts } from "@/types";
 
 interface UseProjectsResult {
@@ -112,13 +113,7 @@ export function useProjects(): UseProjectsResult {
           if (beadsSignal.aborted) return null;
           const result = await loadProjectBeads(project.path, { withSource: true });
           if (beadsSignal.aborted) return null;
-          const grouped = groupBeadsByStatus(result.beads);
-          const beadCounts: BeadCounts = {
-            open: grouped.open.length,
-            in_progress: grouped.in_progress.length,
-            inreview: grouped.inreview.length,
-            closed: grouped.closed.length,
-          };
+          const beadCounts = countBeadsForHome(result.beads);
           return { id: project.id, beadCounts, dataSource: result.source, beadError: undefined };
         } catch (err) {
           if (err instanceof DOMException && err.name === 'AbortError') return null;

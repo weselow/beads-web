@@ -32,8 +32,9 @@ import {
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
 import { ISSUE_TYPES, getIssueTypeMeta } from "@/lib/issue-types";
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
+import { BUILTIN_STATUSES } from "@/lib/statuses";
 import { cn, isDoltProject } from "@/lib/utils";
-import type { Bead, WorktreeStatus } from "@/types";
+import type { Bead, StatusInfo, WorktreeStatus } from "@/types";
 
 
 /** Priority levels 0–4, displayed P0 (critical) … P4 (backlog). Single source for the editor options. */
@@ -67,6 +68,17 @@ export interface BeadDetailProps {
   onUpdate?: () => void;
   /** Board shows an old copy from issues.jsonl: field edits and new subtasks are disabled */
   readOnly?: boolean;
+  /** The project's statuses, offered in the status choice; bd's built-in ones by default */
+  statuses?: readonly StatusInfo[];
+}
+
+/**
+ * Status names for the status choice. A status missing from the project's
+ * list is added, so the choice shows the bead's real status, not another one.
+ */
+function statusChoices(statuses: readonly StatusInfo[], current: string): string[] {
+  const names = statuses.map((s) => s.name);
+  return names.includes(current) ? names : [...names, current];
 }
 
 /**
@@ -88,6 +100,7 @@ export function BeadDetail({
   onCleanup,
   onUpdate,
   readOnly = false,
+  statuses = BUILTIN_STATUSES,
 }: BeadDetailProps) {
   // Close on Escape key
   useEffect(() => {
@@ -165,7 +178,7 @@ export function BeadDetail({
 
   const handleStatusChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!projectPath) return;
-    const newStatus = e.target.value as import("@/types").BeadStatus;
+    const newStatus = e.target.value;
     try {
       if (isDolt) {
         await api.beads.update({ path: projectPath, id: bead.id, status: newStatus });
@@ -355,10 +368,9 @@ export function BeadDetail({
                   title={readOnlyTitle}
                   className={METADATA_SELECT_CLASS}
                 >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="inreview">In Review</option>
-                  <option value="closed">Closed</option>
+                  {statusChoices(statuses, bead.status).map((name) => (
+                    <option key={name} value={name}>{formatStatus(name)}</option>
+                  ))}
                 </select>
               )}
             </span>

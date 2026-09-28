@@ -2,17 +2,17 @@
 
 import { useCallback, useEffect, useState, RefObject } from "react";
 
-import type { Bead, BeadStatus } from "@/types";
+import type { Bead, BoardColumnStatus } from "@/types";
 
 /**
  * Column order for navigation
  */
-const COLUMN_ORDER: BeadStatus[] = ["open", "in_progress", "inreview", "closed"];
+const COLUMN_ORDER: BoardColumnStatus[] = ["open", "in_progress", "inreview", "closed"];
 
 /**
  * Column shortcuts for 'g' prefix navigation
  */
-const COLUMN_SHORTCUTS: Record<string, BeadStatus> = {
+const COLUMN_SHORTCUTS: Record<string, BoardColumnStatus> = {
   o: "open",
   p: "in_progress",
   r: "inreview",
@@ -21,7 +21,7 @@ const COLUMN_SHORTCUTS: Record<string, BeadStatus> = {
 
 export interface KeyboardNavigationOptions {
   beads: Bead[];
-  beadsByStatus: Record<BeadStatus, Bead[]>;
+  beadsByStatus: Record<BoardColumnStatus, Bead[]>;
   selectedId: string | null;
   onSelect: (bead: Bead) => void;
   onOpen: (bead: Bead) => void;
@@ -32,9 +32,9 @@ export interface KeyboardNavigationOptions {
 
 export interface KeyboardNavigationResult {
   selectedId: string | null;
-  selectedColumnStatus: BeadStatus | null;
+  selectedColumnStatus: BoardColumnStatus | null;
   setSelectedId: (id: string | null) => void;
-  setSelectedColumnStatus: (status: BeadStatus | null) => void;
+  setSelectedColumnStatus: (status: BoardColumnStatus | null) => void;
   scrollToSelected: () => void;
 }
 
@@ -63,7 +63,7 @@ export function useKeyboardNavigation({
   isDetailOpen,
 }: KeyboardNavigationOptions): KeyboardNavigationResult {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(selectedId);
-  const [selectedColumnStatus, setSelectedColumnStatus] = useState<BeadStatus | null>(null);
+  const [selectedColumnStatus, setSelectedColumnStatus] = useState<BoardColumnStatus | null>(null);
   const [awaitingColumnKey, setAwaitingColumnKey] = useState(false);
 
   // Sync internal state with external selectedId
@@ -147,7 +147,7 @@ export function useKeyboardNavigation({
    * Jump to a specific column
    */
   const jumpToColumn = useCallback(
-    (status: BeadStatus) => {
+    (status: BoardColumnStatus) => {
       const columnBeads = beadsByStatus[status] || [];
       setSelectedColumnStatus(status);
       if (columnBeads.length > 0) {

@@ -5,7 +5,6 @@
  * through the backend API.
  */
 
-import type { BeadStatus } from "@/types";
 
 import * as api from './api';
 
@@ -84,7 +83,7 @@ export async function addComment(
  */
 export async function updateStatus(
   beadId: string,
-  status: BeadStatus,
+  status: string,
   cwd?: string
 ): Promise<void> {
   const result = await executeBdCommand(

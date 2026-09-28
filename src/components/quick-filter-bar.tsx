@@ -21,11 +21,12 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
+import { formatStatus } from '@/lib/bead-utils';
 import { ISSUE_TYPES, getIssueTypeMeta } from '@/lib/issue-types';
 import type { IssueTypeFilter } from '@/lib/issue-types';
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from '@/lib/read-only';
 import { cn } from '@/lib/utils';
-import type { BeadStatus } from '@/types';
+import type { StatusInfo } from '@/types';
 
 type TypeFilter = IssueTypeFilter;
 type SortField = 'ticket_number' | 'created_at';
@@ -52,10 +53,12 @@ interface QuickFilterBarProps {
   onSearchChange: (value: string) => void;
   /** Ref for the search input (keyboard navigation) */
   searchInputRef?: React.RefObject<HTMLInputElement>;
+  /** The project's statuses, offered as filter options */
+  statusOptions: readonly StatusInfo[];
   /** Active status filters */
-  statuses: BeadStatus[];
+  statuses: string[];
   /** Callback when status filter toggles */
-  onStatusToggle: (status: BeadStatus) => void;
+  onStatusToggle: (status: string) => void;
   /** Active owner filters */
   owners: string[];
   /** Callback when owner filter toggles */
@@ -93,13 +96,6 @@ const SORT_OPTIONS: { value: string; label: string; field: SortField; direction:
   { value: 'created_at_asc', label: 'Updated (Oldest)', field: 'created_at', direction: 'asc' },
 ];
 
-const STATUS_OPTIONS: { value: BeadStatus; label: string }[] = [
-  { value: 'open', label: 'Open' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'inreview', label: 'In Review' },
-  { value: 'closed', label: 'Closed' },
-];
-
 /**
  * QuickFilterBar provides quick access to common filter and sort operations
  * for the kanban board. Displays below the header as a horizontal bar.
@@ -115,6 +111,7 @@ export function QuickFilterBar({
   search,
   onSearchChange,
   searchInputRef,
+  statusOptions,
   statuses,
   onStatusToggle,
   owners,
@@ -375,14 +372,14 @@ export function QuickFilterBar({
         <DropdownMenuContent align="end" className="w-56 bg-surface-raised border-b-default">
           <DropdownMenuLabel className="text-t-tertiary">Status</DropdownMenuLabel>
           <DropdownMenuSeparator className="bg-surface-overlay" />
-          {STATUS_OPTIONS.map((option) => (
+          {statusOptions.map((option) => (
             <DropdownMenuCheckboxItem
-              key={option.value}
-              checked={statuses.includes(option.value)}
-              onCheckedChange={() => onStatusToggle(option.value)}
+              key={option.name}
+              checked={statuses.includes(option.name)}
+              onCheckedChange={() => onStatusToggle(option.name)}
               className="text-t-secondary focus:bg-surface-overlay focus:text-t-primary"
             >
-              {option.label}
+              {formatStatus(option.name)}
             </DropdownMenuCheckboxItem>
           ))}
 

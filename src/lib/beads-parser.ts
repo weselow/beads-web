@@ -5,96 +5,50 @@
  * common operations.
  */
 
-import type { Bead, BeadStatus, Epic, KnownRawStatus } from "@/types";
-import { STATUS_MAP } from "@/types";
+import type { Bead, Epic, StatusInfo } from "@/types";
 
 import * as api from './api';
 
+/** Statuses older bd versions wrote, and the current status each means. */
+const STATUS_SYNONYMS = new Map<string, string>([
+  ['done', 'closed'],
+  ['resolved', 'closed'],
+  ['pending', 'open'],
+]);
+
 /**
- * Check if a raw status string is a known status in the STATUS_MAP
+ * Brings a bead's status up to date: synonyms of old bd versions become the
+ * current status, a tombstone (deleted bead) gives `null`. Every other status
+ * is kept as bd wrote it.
  */
-function isKnownStatus(status: string): status is KnownRawStatus {
-  return status in STATUS_MAP;
+function normalizeBeadStatus(bead: Bead): Bead | null {
+  if (bead.status === 'tombstone') return null;
+  const current = STATUS_SYNONYMS.get(bead.status);
+  return current ? { ...bead, status: current } : bead;
 }
 
 /**
- * Map a raw status string from the backend to a BeadStatus column,
- * attaching _originalStatus and _statusBadge when the status is mapped.
- *
- * Returns null for tombstone beads (should be filtered out).
- * Returns the bead with mapped status for known statuses.
- * Returns the bead mapped to 'open' with _originalStatus for unknown statuses.
+ * Beads whose status is not in the project's status list.
+ * Used for the warning indicator in the filter bar.
  */
-function mapBeadStatus(bead: Bead): Bead | null {
-  const rawStatus = bead.status as string;
-
-  // Known status — look up mapping
-  if (isKnownStatus(rawStatus)) {
-    const mapping = STATUS_MAP[rawStatus];
-
-    // tombstone → hide
-    if (mapping === null) return null;
-
-    // Native column status (no mapping needed)
-    if (mapping.column === rawStatus && !mapping.badge) {
-      return bead;
-    }
-
-    // Mapped status — attach metadata
-    return {
-      ...bead,
-      status: mapping.column,
-      _originalStatus: rawStatus,
-      _statusBadge: mapping.badge,
-    };
-  }
-
-  // Unknown status — map to open column with original status preserved
-  return {
-    ...bead,
-    status: 'open' as BeadStatus,
-    _originalStatus: rawStatus,
-    _statusBadge: { label: rawStatus, variant: 'warning' },
-  };
+export function getUnknownStatusBeads(beads: Bead[], statuses: readonly StatusInfo[]): Bead[] {
+  const known = new Set(statuses.map((s) => s.name));
+  return beads.filter((bead) => !known.has(bead.status));
 }
 
 /**
- * Get beads that have truly unknown statuses (not in the known mapping).
- * Useful for showing a warning indicator in the UI.
- *
- * @param beads - Array of beads (already mapped by loadProjectBeads)
- * @returns Array of beads with unknown original statuses
+ * Sorted, deduplicated names of the statuses missing from the project's list.
  */
-export function getUnknownStatusBeads(beads: Bead[]): Bead[] {
-  return beads.filter((bead) => {
-    if (!bead._originalStatus) return false;
-    return !isKnownStatus(bead._originalStatus);
-  });
-}
-
-/**
- * Get a deduplicated list of unknown status names from beads.
- *
- * @param beads - Array of beads (already mapped)
- * @returns Array of unique unknown status strings
- */
-export function getUnknownStatusNames(beads: Bead[]): string[] {
-  const unknownBeads = getUnknownStatusBeads(beads);
-  const names = new Set<string>();
-  for (const bead of unknownBeads) {
-    if (bead._originalStatus) {
-      names.add(bead._originalStatus);
-    }
-  }
+export function getUnknownStatusNames(beads: Bead[], statuses: readonly StatusInfo[]): string[] {
+  const names = new Set(getUnknownStatusBeads(beads, statuses).map((b) => b.status));
   return Array.from(names).sort();
 }
 
 /**
  * Loads beads from a project directory via API
  *
- * Maps raw statuses from the backend to the 4 kanban columns,
- * filters out tombstone beads, and attaches badge metadata for
- * beads with non-native statuses.
+ * Keeps each bead's real bd status, turning only the synonyms of old bd
+ * versions into current statuses, and drops tombstone beads.
  *
  * @param projectPath - The root path of the project
  * @returns Promise resolving to array of Bead objects
@@ -137,13 +91,12 @@ export async function loadProjectBeads(projectPath: string, options?: { updatedA
 export async function loadProjectBeads(projectPath: string, options: { withSource: true; updatedAfter?: string }): Promise<LoadProjectBeadsResult>;
 export async function loadProjectBeads(projectPath: string, options?: { withSource?: true; updatedAfter?: string }): Promise<Bead[] | LoadProjectBeadsResult> {
   const result = await api.beads.read(projectPath, options?.updatedAfter);
-  // Map statuses, filter tombstones, ensure comments array
+  // Normalize statuses, filter tombstones, ensure comments array
   const mapped: Bead[] = [];
   for (const bead of result.beads) {
-    const withComments = { ...bead, comments: bead.comments ?? [] };
-    const mappedBead = mapBeadStatus(withComments);
-    if (mappedBead !== null) {
-      mapped.push(mappedBead);
+    const normalized = normalizeBeadStatus({ ...bead, comments: bead.comments ?? [] });
+    if (normalized !== null) {
+      mapped.push(normalized);
     }
   }
   if (options?.withSource) {
@@ -173,42 +126,40 @@ export async function parseBeadsFromPath(projectPath: string): Promise<Bead[]> {
 }
 
 /**
- * Groups beads by their status into a record
- *
- * @param beads - Array of Bead objects to group
- * @returns Record with status keys and arrays of beads as values
+ * Groups beads by status, with a group for every status in the project's
+ * list (empty ones included). A bead whose status is not in the list goes
+ * into open, on a copy carrying a warning badge with its status.
+ * Each group is sorted by updated_at, most recent first.
  *
  * @example
  * ```typescript
- * const grouped = groupBeadsByStatus(beads);
- * console.log(grouped.open.length); // Number of open beads
- * console.log(grouped.closed.length); // Number of closed beads
+ * const grouped = groupBeadsByStatus(beads, statuses);
+ * console.log(grouped.blocked.length); // Number of blocked beads
  * ```
  */
-export function groupBeadsByStatus(beads: Bead[]): Record<BeadStatus, Bead[]> {
-  const grouped: Record<BeadStatus, Bead[]> = {
-    open: [],
-    in_progress: [],
-    inreview: [],
-    closed: [],
-  };
+export function groupBeadsByStatus(
+  beads: Bead[],
+  statuses: readonly StatusInfo[]
+): Record<string, Bead[]> {
+  // A status is any string bd accepts; a Map keeps names such as
+  // "constructor" from matching what every plain object inherits.
+  const groups = new Map<string, Bead[]>(statuses.map((s) => [s.name, []]));
+  if (!groups.has('open')) groups.set('open', []);
+  const open = groups.get('open')!;
 
   for (const bead of beads) {
-    // Defensive: if status is somehow not one of the 4 columns, fall back to open
-    const column = grouped[bead.status] ? bead.status : 'open';
-    grouped[column].push(bead);
+    const group = groups.get(bead.status);
+    if (group) {
+      group.push(bead);
+    } else {
+      open.push({ ...bead, _statusBadge: { label: bead.status, variant: 'warning' } });
+    }
   }
 
-  // Sort each group by updated_at descending (most recent first)
-  for (const status of Object.keys(grouped) as BeadStatus[]) {
-    grouped[status].sort((a, b) => {
-      const dateA = new Date(a.updated_at).getTime();
-      const dateB = new Date(b.updated_at).getTime();
-      return dateB - dateA;
-    });
-  }
-
-  return grouped;
+  groups.forEach((group) => {
+    group.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  });
+  return Object.fromEntries(groups);
 }
 
 /**

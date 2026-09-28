@@ -45,9 +45,9 @@ describe('formatStatus', () => {
     expect(formatStatus('closed')).toBe('Closed');
   });
 
-  it('returns unknown status as-is', () => {
-    // @ts-expect-error testing unknown status
-    expect(formatStatus('unknown')).toBe('unknown');
+  it('turns any other bd status into words', () => {
+    expect(formatStatus('blocked')).toBe('Blocked');
+    expect(formatStatus('needs_qa')).toBe('Needs Qa');
   });
 });
 

@@ -33,28 +33,19 @@ import { useBeads } from "@/hooks/use-beads";
 import { useGitHubStatus } from "@/hooks/use-github-status";
 import { useKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 import { useProject } from "@/hooks/use-project";
+import { useStatuses } from "@/hooks/use-statuses";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
 import { isBlocked } from "@/lib/bead-utils";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
+import { boardColumns, foldIntoBoardColumns } from "@/lib/board-fold";
 import { getIssueTypeMeta } from "@/lib/issue-types";
 import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoltProject } from "@/lib/utils";
-import type { Bead, BeadStatus } from "@/types";
+import type { Bead } from "@/types";
 
 /**
- * Column configuration for the Kanban board
- * Note: Cancelled status is hidden per requirements
- */
-const COLUMNS: { status: BeadStatus; title: string }[] = [
-  { status: "open", title: "Open" },
-  { status: "in_progress", title: "In Progress" },
-  { status: "inreview", title: "In Review" },
-  { status: "closed", title: "Closed" },
-];
-
-/**
- * Main Kanban board component with 4 columns, search, filter, and keyboard navigation
+ * Main Kanban board component with status columns, search, filter, and keyboard navigation
  */
 export default function KanbanBoard() {
   const searchParams = useSearchParams();
@@ -78,6 +69,9 @@ export default function KanbanBoard() {
     stale,
     refresh: refreshBeads,
   } = useBeads(project?.path ?? "");
+
+  // The project's statuses: bd's built-in ones plus its own
+  const { statuses, isLoading: statusesLoading } = useStatuses(project?.path ?? "");
 
   // An old copy from issues.jsonl: bd failed, and every write goes through bd.
   const readOnly = stale !== null;
@@ -133,7 +127,7 @@ export default function KanbanBoard() {
   /**
    * Toggle a status in the filter
    */
-  const toggleStatus = useCallback((status: BeadStatus) => {
+  const toggleStatus = useCallback((status: string) => {
     const newStatuses = filters.statuses.includes(status)
       ? filters.statuses.filter(s => s !== status)
       : [...filters.statuses, status];
@@ -174,28 +168,20 @@ export default function KanbanBoard() {
   }, [filteredBeads, typeFilter]);
 
   /**
-   * Group top-level beads by status for columns.
-   * Defensive: falls back to 'open' for any status not in the 4 columns.
+   * Split top-level beads into the board's columns. TEMPORARY until
+   * beads-web-5fk.3: statuses without a column are shown in open with a badge.
    */
-  const filteredBeadsByStatus = useMemo(() => {
-    const grouped: Record<BeadStatus, Bead[]> = {
-      open: [],
-      in_progress: [],
-      inreview: [],
-      closed: [],
-    };
-    for (const bead of topLevelBeads) {
-      const column = grouped[bead.status] ? bead.status : 'open';
-      grouped[column].push(bead);
-    }
-    return grouped;
-  }, [topLevelBeads]);
+  const columns = useMemo(() => boardColumns(statuses), [statuses]);
+  const filteredBeadsByStatus = useMemo(
+    () => foldIntoBoardColumns(topLevelBeads, statuses),
+    [topLevelBeads, statuses]
+  );
 
   /**
-   * Detect beads with truly unknown statuses for the warning indicator.
+   * Beads whose status is not in the project's list, for the warning indicator.
    */
-  const unknownStatusBeads = useMemo(() => getUnknownStatusBeads(beads), [beads]);
-  const unknownStatusNames = useMemo(() => getUnknownStatusNames(beads), [beads]);
+  const unknownStatusBeads = useMemo(() => getUnknownStatusBeads(beads, statuses), [beads, statuses]);
+  const unknownStatusNames = useMemo(() => getUnknownStatusNames(beads, statuses), [beads, statuses]);
 
   // Detail panel state
   const {
@@ -332,6 +318,7 @@ export default function KanbanBoard() {
           sortDirection={filters.sortDirection}
           onSortChange={(field, direction) => setFilters({ sortField: field, sortDirection: direction })}
           // Status/Owner filters
+          statusOptions={statuses}
           statuses={filters.statuses}
           onStatusToggle={toggleStatus}
           owners={filters.owners}
@@ -367,7 +354,7 @@ export default function KanbanBoard() {
           the user's way back to the project list. */}
       <main className="flex-1 overflow-hidden p-4">
         <ErrorBoundary label="Kanban Board">
-        {beadsLoading ? (
+        {beadsLoading || statusesLoading ? (
           <div className="flex items-center justify-center h-full">
             <div role="status" className="text-t-muted">Loading beads…</div>
           </div>
@@ -376,8 +363,11 @@ export default function KanbanBoard() {
             <div role="alert" className="text-danger">Error loading beads: {beadsError.message}</div>
           </div>
         ) : (
-          <div className="grid grid-cols-4 h-full" style={{ gap: 'var(--column-gap)' }}>
-            {COLUMNS.map(({ status, title }) => (
+          <div
+            className="grid h-full"
+            style={{ gap: 'var(--column-gap)', gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
+          >
+            {columns.map(({ status, title }) => (
               <KanbanColumn
                 key={status}
                 status={status}
@@ -415,6 +405,7 @@ export default function KanbanBoard() {
           canGoBack={canGoBack}
           onUpdate={refreshBeads}
           readOnly={readOnly}
+          statuses={statuses}
         >
           <CommentList
             comments={detailBead.comments}

@@ -6,12 +6,12 @@ import { BeadCard } from "@/components/bead-card";
 import { EpicCard } from "@/components/epic-card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Bead, BeadStatus, Epic } from "@/types";
+import type { Bead, BoardColumnStatus, Epic } from "@/types";
 
 /**
  * Get the CSS color value for a column's accent (used as --column-accent)
  */
-function getColumnAccentColor(status: BeadStatus): string {
+function getColumnAccentColor(status: BoardColumnStatus): string {
   switch (status) {
     case "open": return "hsl(var(--status-open))";
     case "in_progress": return "hsl(var(--status-progress))";
@@ -22,7 +22,7 @@ function getColumnAccentColor(status: BeadStatus): string {
 }
 
 export interface KanbanColumnProps {
-  status: BeadStatus;
+  status: BoardColumnStatus;
   title: string;
   beads: Bead[];
   /** All beads for resolving epic children */
@@ -43,7 +43,7 @@ export interface KanbanColumnProps {
 /**
  * Get accent border class for column header based on status
  */
-function getColumnAccentBorder(status: BeadStatus): string {
+function getColumnAccentBorder(status: BoardColumnStatus): string {
   switch (status) {
     case "open":
       return "border-t-2 border-t-status-open/60";
@@ -61,7 +61,7 @@ function getColumnAccentBorder(status: BeadStatus): string {
 /**
  * Get header text color based on status
  */
-function getHeaderTextColor(status: BeadStatus): string {
+function getHeaderTextColor(status: BoardColumnStatus): string {
   switch (status) {
     case "open":
       return "text-status-open";
@@ -79,7 +79,7 @@ function getHeaderTextColor(status: BeadStatus): string {
 /**
  * Get badge color class for count badge based on status (dark theme)
  */
-function getBadgeVariant(status: BeadStatus): string {
+function getBadgeVariant(status: BoardColumnStatus): string {
   switch (status) {
     case "open":
       return "bg-status-open/20 text-status-open border-status-open/30 hover:bg-status-open/20";

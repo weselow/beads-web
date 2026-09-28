@@ -5,7 +5,7 @@ import { Check, Circle, Clock, FileCheck, GitPullRequest, GitMerge, Link2 } from
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { truncate } from "@/lib/bead-utils";
 import { cn } from "@/lib/utils";
-import type { Bead, BeadStatus } from "@/types";
+import type { Bead } from "@/types";
 
 /**
  * PR status for a child task (used for icon display)
@@ -31,7 +31,7 @@ export interface SubtaskListProps {
 /**
  * Get status icon based on bead status
  */
-function getStatusIcon(status: BeadStatus) {
+function getStatusIcon(status: string) {
   switch (status) {
     case 'closed':
       return <Check className="h-3.5 w-3.5 text-status-closed" aria-hidden="true" />;
@@ -48,7 +48,7 @@ function getStatusIcon(status: BeadStatus) {
 /**
  * Get status text color
  */
-function getStatusColor(status: BeadStatus): string {
+function getStatusColor(status: string): string {
   switch (status) {
     case 'closed':
       return "text-status-closed";
