@@ -5,8 +5,6 @@
  * and subtask-list components.
  */
 
-import type { BeadStatus } from "@/types";
-
 /**
  * Format bead ID for display, preserving the workspace prefix.
  *
@@ -28,27 +26,21 @@ export function formatBeadId(id: string, maxLen = 6): string {
 }
 
 /**
- * Format status for display (e.g., "in_progress" -> "In Progress")
+ * Format any bd status for display (e.g., "in_progress" -> "In Progress",
+ * "blocked" -> "Blocked").
  */
-export function formatStatus(status: BeadStatus): string {
-  switch (status) {
-    case "open":
-      return "Open";
-    case "in_progress":
-      return "In Progress";
-    case "inreview":
-      return "In Review";
-    case "closed":
-      return "Closed";
-    default:
-      return status;
-  }
+export function formatStatus(status: string): string {
+  if (status === "inreview") return "In Review";
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /**
  * Get Tailwind color class for status indicator dot
  */
-export function getStatusDotColor(status: BeadStatus): string {
+export function getStatusDotColor(status: string): string {
   switch (status) {
     case "open":
       return "text-status-open";

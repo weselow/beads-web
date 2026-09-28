@@ -4,8 +4,8 @@
  */
 
 import { apiUrl } from '@/lib/api-base';
-import { BeadsResponseSchema, PRStatusSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
-import type { Project, Tag, Bead, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryEntry, Agent } from '@/types';
+import { BeadsResponseSchema, PRStatusSchema, StatusesResponseSchema, WorktreeStatusSchema } from '@/lib/api-schemas';
+import type { Project, Tag, Bead, StatusInfo, WorktreeStatus, WorktreeEntry, PRStatus, PRFilesResponse, MemoryEntry, Agent } from '@/types';
 
 /**
  * Input for creating a new project
@@ -183,6 +183,19 @@ export const beads = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+};
+
+/**
+ * Project statuses API: bd's built-in statuses plus the project's own.
+ */
+export const statuses = {
+  get: async (path: string) => {
+    const data = await fetchApi<{ statuses: StatusInfo[]; source: string }>(
+      `/api/statuses?${new URLSearchParams({ path })}`
+    );
+    StatusesResponseSchema.parse(data);
+    return data;
+  },
 };
 
 /**

@@ -10,14 +10,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 import { useFileWatcher } from "@/hooks/use-file-watcher";
-import {
-  loadProjectBeads,
-  groupBeadsByStatus,
-  assignTicketNumbers,
-} from "@/lib/beads-parser";
+import { loadProjectBeads, assignTicketNumbers } from "@/lib/beads-parser";
 import type { StaleSource } from "@/lib/beads-parser";
 import { isDoltProject } from "@/lib/utils";
-import type { Bead, BeadStatus } from "@/types";
+import type { Bead } from "@/types";
 
 export interface RefreshBeadsOptions {
   /** Ignore the incremental cursor and replace state with a complete response. */
@@ -35,8 +31,6 @@ const DEFAULT_POLL_MS = 15_000;
 export interface UseBeadsResult {
   /** Array of all beads from the project */
   beads: Bead[];
-  /** Beads grouped by status for kanban columns */
-  beadsByStatus: Record<BeadStatus, Bead[]>;
   /** Map of bead ID to sequential ticket number (1-indexed by creation order) */
   ticketNumbers: Map<string, number>;
   /** Whether beads are currently being loaded */
@@ -53,46 +47,27 @@ export interface UseBeadsResult {
 }
 
 /**
- * Empty grouped beads object for initial state
- */
-const EMPTY_GROUPED: Record<BeadStatus, Bead[]> = {
-  open: [],
-  in_progress: [],
-  inreview: [],
-  closed: [],
-};
-
-/**
  * Hook to load and watch beads from a project directory.
  *
  * Automatically refreshes when the issues.jsonl file changes.
  *
  * @param projectPath - The absolute path to the project root
- * @returns Object containing beads, grouped beads, loading state, error, and refresh function
+ * @returns Object containing beads, ticket numbers, loading state, error, and refresh function
  *
  * @example
  * ```tsx
- * function KanbanBoard({ projectPath }: { projectPath: string }) {
- *   const { beadsByStatus, isLoading, error, refresh } = useBeads(projectPath);
+ * function BeadList({ projectPath }: { projectPath: string }) {
+ *   const { beads, isLoading, error } = useBeads(projectPath);
  *
  *   if (isLoading) return <Loading />;
  *   if (error) return <Error message={error.message} />;
  *
- *   return (
- *     <div>
- *       <Column title="Open" beads={beadsByStatus.open} />
- *       <Column title="In Progress" beads={beadsByStatus.in_progress} />
- *       <Column title="In Review" beads={beadsByStatus.inreview} />
- *       <Column title="Closed" beads={beadsByStatus.closed} />
- *     </div>
- *   );
+ *   return <ul>{beads.map((b) => <li key={b.id}>{b.title}</li>)}</ul>;
  * }
  * ```
  */
 export function useBeads(projectPath: string): UseBeadsResult {
   const [beads, setBeads] = useState<Bead[]>([]);
-  const [beadsByStatus, setBeadsByStatus] =
-    useState<Record<BeadStatus, Bead[]>>(EMPTY_GROUPED);
   const [ticketNumbers, setTicketNumbers] = useState<Map<string, number>>(
     new Map()
   );
@@ -119,7 +94,6 @@ export function useBeads(projectPath: string): UseBeadsResult {
   const loadBeads = useCallback(async (options?: RefreshBeadsOptions) => {
     if (!projectPath) {
       setBeads([]);
-      setBeadsByStatus(EMPTY_GROUPED);
       setTicketNumbers(new Map());
       setDataSource(null);
       setStale(null);
@@ -174,20 +148,14 @@ export function useBeads(projectPath: string): UseBeadsResult {
             beadMap.set(updated.id, updated);
           }
           loadedBeads = Array.from(beadMap.values());
-          const grouped = groupBeadsByStatus(loadedBeads);
-          const tickets = assignTicketNumbers(loadedBeads);
-          setBeadsByStatus(grouped);
-          setTicketNumbers(tickets);
+          setTicketNumbers(assignTicketNumbers(loadedBeads));
           return loadedBeads;
         });
       } else {
         // Full load — replace everything
         loadedBeads = fetchedBeads;
-        const grouped = groupBeadsByStatus(loadedBeads);
-        const tickets = assignTicketNumbers(loadedBeads);
         setBeads(loadedBeads);
-        setBeadsByStatus(grouped);
-        setTicketNumbers(tickets);
+        setTicketNumbers(assignTicketNumbers(loadedBeads));
       }
 
       setError(null);
@@ -299,7 +267,6 @@ export function useBeads(projectPath: string): UseBeadsResult {
 
   return {
     beads,
-    beadsByStatus,
     ticketNumbers,
     isLoading,
     error,

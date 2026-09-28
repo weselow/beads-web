@@ -166,3 +166,28 @@ describe('fetchApi error handling', () => {
     })).rejects.toThrow('API error: 500 Internal Server Error');
   });
 });
+
+describe('api.statuses', () => {
+  it('asks GET /api/statuses for the project and returns the list', async () => {
+    const body = {
+      statuses: [{ name: 'open', category: 'active', builtin: true }],
+      source: 'cli',
+    };
+    mockFetch.mockResolvedValue(mockResponse(body));
+
+    const result = await api.statuses.get('C:/my project');
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('/api/statuses?path=C%3A%2Fmy+project');
+    expect(result).toEqual(body);
+  });
+
+  it('rejects a status with a group outside the four', async () => {
+    mockFetch.mockResolvedValue(mockResponse({
+      statuses: [{ name: 'open', category: 'later', builtin: true }],
+      source: 'cli',
+    }));
+
+    await expect(api.statuses.get('/p')).rejects.toThrow();
+  });
+});

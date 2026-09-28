@@ -9,7 +9,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 
-import type { Bead, BeadStatus } from "@/types";
+import type { Bead } from "@/types";
 
 /**
  * Sort field options
@@ -27,8 +27,8 @@ export type SortDirection = "asc" | "desc";
 export interface BeadFilters {
   /** Search query for title and description (case-insensitive) */
   search: string;
-  /** Status filter - empty array means all statuses */
-  statuses: BeadStatus[];
+  /** Status filter (any status of the project) - empty array means all statuses */
+  statuses: string[];
   /** Priority filter - empty array means all priorities (0-4) */
   priorities: number[];
   /** Owner/agent filter - empty array means all owners */

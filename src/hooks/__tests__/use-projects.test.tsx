@@ -25,14 +25,6 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/lib/beads-parser', () => ({
   loadProjectBeads: (...args: unknown[]) => loadProjectBeadsMock(...args),
-  // Not called in these tests because loadProjectBeads never resolves, but
-  // keep a stub so importers don't crash.
-  groupBeadsByStatus: vi.fn(() => ({
-    open: [],
-    in_progress: [],
-    inreview: [],
-    closed: [],
-  })),
 }));
 
 vi.mock('@/lib/api', () => ({

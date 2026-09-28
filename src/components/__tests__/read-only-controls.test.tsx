@@ -82,6 +82,7 @@ describe('write controls on an old copy', () => {
         onSortChange={vi.fn()}
         search=""
         onSearchChange={vi.fn()}
+        statusOptions={[]}
         statuses={[]}
         onStatusToggle={vi.fn()}
         owners={[]}

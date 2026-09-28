@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StaleSource } from '@/lib/beads-parser';
-import type { Bead } from '@/types';
+import { BUILTIN_STATUSES } from '@/lib/statuses';
+import type { Bead, StatusInfo } from '@/types';
 
 import KanbanBoard from '../kanban-board';
 
@@ -45,13 +46,19 @@ let currentStale: StaleSource | null = null;
 vi.mock('@/hooks/use-beads', () => ({
   useBeads: () => ({
     beads: [bead],
-    beadsByStatus: { open: [bead], in_progress: [], inreview: [], closed: [] },
     ticketNumbers: new Map<string, number>(),
     isLoading: false,
     error: null,
     stale: currentStale,
     refresh: vi.fn(),
   }),
+}));
+
+// The project's status list; each test may replace it before rendering.
+let currentStatuses: readonly StatusInfo[] = BUILTIN_STATUSES;
+
+vi.mock('@/hooks/use-statuses', () => ({
+  useStatuses: () => ({ statuses: currentStatuses, isLoading: false }),
 }));
 
 // Keep the detail panel open on one bead, so its read-only flag can be seen.
@@ -94,8 +101,12 @@ vi.mock('@/hooks/use-worktree-statuses', () => ({
 
 // Stubs that show the read-only flag each write area received.
 function flagStub(testId: string) {
-  function FlagStub({ readOnly, children }: { readOnly?: boolean; children?: React.ReactNode }) {
-    return <div data-testid={testId} data-read-only={String(readOnly === true)}>{children}</div>;
+  function FlagStub({ readOnly, status, children }: { readOnly?: boolean; status?: string; children?: React.ReactNode }) {
+    return (
+      <div data-testid={testId} data-read-only={String(readOnly === true)} data-status={status}>
+        {children}
+      </div>
+    );
   }
   return FlagStub;
 }
@@ -118,6 +129,7 @@ function readOnlyFlags(): string[] {
 
 beforeEach(() => {
   currentStale = null;
+  currentStatuses = BUILTIN_STATUSES;
 });
 
 describe('Kanban board on an old copy from issues.jsonl', () => {
@@ -137,5 +149,24 @@ describe('Kanban board on an old copy from issues.jsonl', () => {
     expect(screen.queryByText(/Showing an old copy/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /new/i })).toBeEnabled();
     expect(readOnlyFlags().every((flag) => flag === 'false')).toBe(true);
+  });
+});
+
+// TEMPORARY until beads-web-5fk.3, which draws a column per status.
+describe('Kanban board columns', () => {
+  const columnStatuses = () => screen.getAllByTestId('column').map((el) => el.getAttribute('data-status'));
+
+  it('draws no In Review column in a project without that status', () => {
+    render(<KanbanBoard />);
+
+    expect(columnStatuses()).toEqual(['open', 'in_progress', 'closed']);
+  });
+
+  it('draws In Review when the project has it as its own status', () => {
+    currentStatuses = [...BUILTIN_STATUSES, { name: 'inreview', category: 'wip', builtin: false }];
+
+    render(<KanbanBoard />);
+
+    expect(columnStatuses()).toEqual(['open', 'in_progress', 'inreview', 'closed']);
   });
 });

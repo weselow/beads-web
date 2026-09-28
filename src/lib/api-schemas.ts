@@ -31,7 +31,6 @@ export const BeadSchema = z.object({
   deps: z.array(z.string()).nullish(),
   blockers: z.array(z.string()).nullish(),
   relates_to: z.array(z.string()).nullish(),
-  _originalStatus: z.string().nullish(),
   close_reason: z.string().nullish(),
   closed_at: z.string().nullish(),
   created_by: z.string().nullish(),
@@ -58,6 +57,16 @@ export const BeadsResponseSchema = z.object({
   stale_reason: z.string().optional(),
   /** Modification time of issues.jsonl; may be absent even with `stale_reason`. */
   jsonl_modified_at: z.string().optional(),
+});
+
+/** `GET /api/statuses`: the project's statuses, each in one of four groups. */
+export const StatusesResponseSchema = z.object({
+  statuses: z.array(z.object({
+    name: z.string(),
+    category: z.enum(["active", "wip", "done", "frozen"]),
+    builtin: z.boolean(),
+  })),
+  source: z.string(),
 });
 
 export const PRChecksSchema = z.object({

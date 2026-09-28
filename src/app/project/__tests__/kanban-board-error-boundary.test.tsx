@@ -30,7 +30,6 @@ vi.mock('@/hooks/use-project', () => ({
 vi.mock('@/hooks/use-beads', () => ({
   useBeads: () => ({
     beads: [],
-    beadsByStatus: { open: [], in_progress: [], inreview: [], closed: [] },
     ticketNumbers: new Map<string, number>(),
     isLoading: false,
     error: null,
@@ -38,6 +37,11 @@ vi.mock('@/hooks/use-beads', () => ({
     refresh: vi.fn(),
   }),
 }));
+
+vi.mock('@/hooks/use-statuses', async () => {
+  const { BUILTIN_STATUSES } = await import('@/lib/statuses');
+  return { useStatuses: () => ({ statuses: BUILTIN_STATUSES, isLoading: false }) };
+});
 
 vi.mock('@/hooks/use-github-status', () => ({
   useGitHubStatus: () => ({

@@ -383,7 +383,7 @@ export function BeadCard({ bead, allBeads, ticketNumber, worktreeStatus, prStatu
               {blocked && (
                 <Badge variant="destructive" appearance="light" size="xs" className="theme-badge">BLOCKED</Badge>
               )}
-              {bead._statusBadge && !(blocked && bead._originalStatus === 'blocked') && (
+              {bead._statusBadge && !(blocked && bead.status === 'blocked') && (
                 <Badge
                   variant="outline"
                   size="xs"
