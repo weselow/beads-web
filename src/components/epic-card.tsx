@@ -15,6 +15,7 @@ import * as api from "@/lib/api";
 import { formatBeadId, isBlocked, truncate } from "@/lib/bead-utils";
 import { closeBead } from "@/lib/cli";
 import { computeEpicProgress } from "@/lib/epic-parser";
+import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, Epic, EpicProgress } from "@/types";
 
@@ -37,6 +38,8 @@ export interface EpicCardProps {
   projectPath?: string;
   /** Callback after epic is closed (to refresh board) */
   onUpdate?: () => void;
+  /** Board shows an old copy from issues.jsonl: closing the epic is disabled */
+  readOnly?: boolean;
 }
 
 /**
@@ -74,7 +77,8 @@ export function EpicCard({
   onChildClick,
   onNavigateToDependency,
   projectPath,
-  onUpdate
+  onUpdate,
+  readOnly = false,
 }: EpicCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -164,7 +168,7 @@ export function EpicCard({
    */
   const handleCloseEpic = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isClosing) return;
+    if (isClosing || readOnly) return;
 
     setIsClosing(true);
     try {
@@ -243,8 +247,12 @@ export function EpicCard({
         variant="outline"
         size="xs"
         onClick={handleCloseEpic}
-        disabled={isClosing}
-        className="w-full border-success/30 text-success hover:bg-success/10 hover:text-success/80"
+        disabled={isClosing || readOnly}
+        title={readOnly ? READ_ONLY_HINT : undefined}
+        className={cn(
+          "w-full border-success/30 text-success hover:bg-success/10 hover:text-success/80",
+          READ_ONLY_BUTTON_CLASS
+        )}
       >
         {isClosing ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3" aria-hidden="true" />}
         {isClosing ? 'Closing…' : 'Close Epic'}

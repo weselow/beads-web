@@ -8,6 +8,7 @@ import { MarkdownBody } from "@/components/markdown-body";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addComment } from "@/lib/cli";
+import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
 import { cn } from "@/lib/utils";
 import type { Comment } from "@/types";
 
@@ -16,6 +17,8 @@ export interface CommentListProps {
   beadId: string;
   projectPath: string;
   onCommentAdded?: () => void | Promise<void>;
+  /** Board shows an old copy from issues.jsonl: adding a comment is disabled */
+  readOnly?: boolean;
 }
 
 /**
@@ -62,13 +65,15 @@ export function CommentList({
   beadId,
   projectPath,
   onCommentAdded,
+  readOnly = false,
 }: CommentListProps) {
   const [newComment, setNewComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const readOnlyTitle = readOnly ? READ_ONLY_HINT : undefined;
 
   const handleAddComment = async () => {
-    if (!newComment.trim()) return;
+    if (readOnly || !newComment.trim()) return;
 
     setIsSubmitting(true);
     setError(null);
@@ -126,12 +131,15 @@ export function CommentList({
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isSubmitting}
+            disabled={readOnly || isSubmitting}
+            title={readOnlyTitle}
             className="flex-1"
           />
           <Button
             onClick={handleAddComment}
-            disabled={isSubmitting || !newComment.trim()}
+            disabled={readOnly || isSubmitting || !newComment.trim()}
+            title={readOnlyTitle}
+            className={READ_ONLY_BUTTON_CLASS}
             size="sm"
           >
             {isSubmitting ? "Adding…" : "Add"}

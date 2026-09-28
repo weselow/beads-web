@@ -41,6 +41,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { useMemory } from "@/hooks/use-memory";
+import { READ_ONLY_HINT } from "@/lib/read-only";
 import type { MemoryEntry } from "@/types";
 
 export interface MemoryPanelProps {
@@ -50,12 +51,15 @@ export interface MemoryPanelProps {
   onOpenChange: (open: boolean) => void;
   /** Absolute path to the project root */
   projectPath: string;
+  /** Board shows an old copy from issues.jsonl: adding, editing and deleting are disabled */
+  readOnly?: boolean;
 }
 
 /**
  * Memory Panel - slide-out Sheet for browsing and managing bd memory entries
  */
-export function MemoryPanel({ open, onOpenChange, projectPath }: MemoryPanelProps) {
+export function MemoryPanel({ open, onOpenChange, projectPath, readOnly = false }: MemoryPanelProps) {
+  const readOnlyTitle = readOnly ? READ_ONLY_HINT : undefined;
   const {
     entries,
     isLoading,
@@ -158,7 +162,9 @@ export function MemoryPanel({ open, onOpenChange, projectPath }: MemoryPanelProp
           <button
             type="button"
             onClick={() => setIsCreateOpen(true)}
-            className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded border border-b-strong bg-surface-overlay/50 text-sm text-t-secondary hover:text-t-primary hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            disabled={readOnly}
+            title={readOnlyTitle}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded border border-b-strong bg-surface-overlay/50 text-sm text-t-secondary hover:text-t-primary hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="size-4" aria-hidden="true" />
             Add Memory
@@ -209,9 +215,12 @@ export function MemoryPanel({ open, onOpenChange, projectPath }: MemoryPanelProp
                       </code>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
+                          {/* Both actions (edit, delete) are writes, so the whole menu is off on an old copy. */}
                           <button
                             type="button"
-                            className="size-6 flex items-center justify-center rounded text-t-muted hover:text-t-secondary hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring shrink-0"
+                            disabled={readOnly}
+                            title={readOnlyTitle}
+                            className="size-6 flex items-center justify-center rounded text-t-muted hover:text-t-secondary hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label="Entry actions"
                           >
                             <MoreVertical className="size-3.5" />
