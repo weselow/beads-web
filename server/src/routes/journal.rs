@@ -8,7 +8,6 @@
 
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -365,17 +364,25 @@ async fn read_lines(
     failure.map_or(Ok(other), Err)
 }
 
-enum Fetch {
+pub(crate) enum Fetch {
     Records(Vec<JournalRecord>),
     /// The records we need were pruned, or the journal was replaced.
     Lost(String),
 }
 
-/// Reads the records after `seq`. With `anchored`, also checks that record
-/// `seq` itself is still there (see [`strip_anchor`]).
-async fn fetch_after(project_path: &Path, seq: i64, anchored: bool) -> Result<Fetch, String> {
-    let anchor = if anchored { seq } else { 0 };
-    let since = if anchor > 0 { seq - 1 } else { seq };
+/// Turns the records read from `seq - 1` on into a [`Fetch`]: the records
+/// after `seq`, or `Lost` when record `seq` itself is gone.
+fn anchored(records: Vec<JournalRecord>, seq: i64) -> Fetch {
+    match strip_anchor(records, seq) {
+        Some(records) => Fetch::Records(records),
+        None => Fetch::Lost(format!("journal record {} is gone", seq)),
+    }
+}
+
+/// Reads the records after `seq`, checking that record `seq` itself is still
+/// there (see [`strip_anchor`]).
+async fn fetch_after(project_path: &Path, seq: i64) -> Result<Fetch, String> {
+    let since = (seq - 1).max(0);
     let mut records = Vec::new();
     let end = stream_tail(project_path, since, TAIL_TIMEOUT, |line| {
         let record = serde_json::from_str::<JournalRecord>(line)
@@ -390,10 +397,7 @@ async fn fetch_after(project_path: &Path, seq: i64, anchored: bool) -> Result<Fe
             since, head
         )));
     }
-    Ok(match strip_anchor(records, anchor) {
-        Some(records) => Fetch::Records(records),
-        None => Fetch::Lost(format!("journal record {} is gone", anchor)),
-    })
+    Ok(anchored(records, seq))
 }
 
 #[derive(Deserialize)]
@@ -441,11 +445,46 @@ async fn scan_head(
 }
 
 // ---------------------------------------------------------------------------
+// What the cache asks of bd
+// ---------------------------------------------------------------------------
+
+pub(crate) type BdResult<'a, T> = futures::future::BoxFuture<'a, Result<T, String>>;
+
+/// The bd calls the cache makes. Behind a trait so the cache's decisions can
+/// be tested without bd; the real one is [`CliSource`].
+pub(crate) trait JournalSource: Send + Sync + 'static {
+    /// Everything, the way Tier 2b reads it: `bd list` plus the comments.
+    fn read_all<'a>(&'a self, project_path: &'a Path) -> BdResult<'a, JournalRead>;
+    /// The highest seq in the journal (see [`find_head`]).
+    fn find_head<'a>(&'a self, project_path: &'a Path, hint: i64) -> BdResult<'a, i64>;
+    /// The records after `seq` (see [`fetch_after`]).
+    fn fetch_after<'a>(&'a self, project_path: &'a Path, seq: i64) -> BdResult<'a, Fetch>;
+}
+
+struct CliSource;
+
+impl JournalSource for CliSource {
+    fn read_all<'a>(&'a self, project_path: &'a Path) -> BdResult<'a, JournalRead> {
+        Box::pin(super::beads::read_beads_from_cli(project_path, None))
+    }
+
+    fn find_head<'a>(&'a self, project_path: &'a Path, hint: i64) -> BdResult<'a, i64> {
+        Box::pin(find_head(project_path, hint))
+    }
+
+    fn fetch_after<'a>(&'a self, project_path: &'a Path, seq: i64) -> BdResult<'a, Fetch> {
+        Box::pin(fetch_after(project_path, seq))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Per-project cache
 // ---------------------------------------------------------------------------
 
 /// Safety net: re-read everything this often. `bd dolt pull` is not
-/// journaled, and a replaced database starts its numbers over.
+/// journaled, and a replaced database starts its numbers over. The re-read
+/// runs in the background; the request that notices it is due is answered
+/// from the caught-up copy.
 const REBASELINE_AFTER: Duration = Duration::from_secs(10 * 60);
 
 struct CachedProject {
@@ -461,17 +500,34 @@ type Slot = Arc<tokio::sync::Mutex<Option<CachedProject>>>;
 
 /// Journal-backed copies of filesystem projects, one per project path.
 ///
-/// Each project has its own async lock, so at most one bd call per project
-/// runs at a time; parallel requests wait and reuse the fresh copy.
-#[derive(Default)]
+/// Each project has its own async lock, held by every bd call the cache
+/// makes — background re-reads included — so at most one runs per project
+/// (the embedded database is single). Parallel requests wait and reuse the
+/// fresh copy.
 pub struct JournalCache {
     slots: std::sync::Mutex<HashMap<PathBuf, Slot>>,
+    source: Arc<dyn JournalSource>,
+    reread_after: Duration,
+}
+
+impl Default for JournalCache {
+    fn default() -> Self {
+        Self::with_source(Arc::new(CliSource), REBASELINE_AFTER)
+    }
 }
 
 /// Beads (dependencies not yet post-processed) plus the comment total.
 pub type JournalRead = (Vec<Bead>, usize);
 
 impl JournalCache {
+    pub(crate) fn with_source(source: Arc<dyn JournalSource>, reread_after: Duration) -> Self {
+        Self {
+            slots: Default::default(),
+            source,
+            reread_after,
+        }
+    }
+
     fn slot(&self, project_path: &Path) -> Slot {
         let mut slots = self.slots.lock().unwrap_or_else(|e| e.into_inner());
         slots.entry(project_path.to_path_buf()).or_default().clone()
@@ -489,78 +545,149 @@ impl JournalCache {
     /// Returns the project's beads, catching up with the journal first.
     /// `full` forces a complete re-read.
     ///
+    /// No request waits for a baseline (anchor + full read), which costs more
+    /// than the plain Tier 2b read: without a usable copy the answer is a
+    /// plain read and the copy is built after it; a copy due for its
+    /// safety re-read is caught up, answered, and re-read after that. Both
+    /// continue in a task of their own that keeps the project's lock.
+    ///
     /// Dropping this future mid-way is safe: a catch-up changes the copy only
-    /// after the whole tail is read, and a full read runs in its own task
-    /// (see [`store_detached`]).
+    /// after the whole tail is read, and full reads run in their own task.
     pub async fn read(&self, project_path: &Path, full: bool) -> Result<JournalRead, String> {
         let arrived = Instant::now();
         let mut guard = self.slot(project_path).lock_owned().await;
-
-        if let Some(cached) = guard.as_mut() {
-            let stale = full || cached.baseline_at.elapsed() >= REBASELINE_AFTER;
-            if !stale {
-                if cached.refreshed_at >= arrived {
-                    return Ok(snapshot(cached));
-                }
-                if catch_up(project_path, cached).await? {
-                    return Ok(snapshot(cached));
-                }
-            }
+        let job = Job {
+            source: self.source.clone(),
+            path: project_path.to_path_buf(),
+        };
+        let Some(cached) = guard.as_mut().filter(|_| !full) else {
+            return job.answer_then_build(guard).await;
+        };
+        if cached.refreshed_at >= arrived {
+            return Ok(snapshot(cached));
         }
-
-        let hint = guard.as_ref().map_or(0, |c| c.seq);
-        let path = project_path.to_path_buf();
-        let work = async move { baseline(&path, hint).await };
-        store_detached(guard, project_path.to_path_buf(), work).await
+        if !catch_up(&*self.source, project_path, cached).await? {
+            return job.answer_then_build(guard).await;
+        }
+        let read = snapshot(cached);
+        if cached.baseline_at.elapsed() >= self.reread_after {
+            let anchor = Anchor::Known(cached.seq);
+            tokio::spawn(job.build(guard, anchor));
+        }
+        Ok(read)
     }
 }
 
 type SlotGuard = tokio::sync::OwnedMutexGuard<Option<CachedProject>>;
 
-/// Runs a full read in a task of its own, which keeps the project's lock and
-/// stores the fresh copy in the slot itself.
-///
-/// A full read of a large project takes 10-25 s. When the page gives up on
-/// the request, axum drops this future — but not the task, so the read still
-/// finishes and the next request gets the copy instead of starting over.
-/// A panic in the task arrives here as an error; the old copy stays.
-async fn store_detached<F>(
-    mut guard: SlotGuard,
-    project_path: PathBuf,
-    work: F,
-) -> Result<JournalRead, String>
-where
-    F: Future<Output = Result<CachedProject, String>> + Send + 'static,
-{
-    let (reply, answer) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        let outcome = work.await.map(|fresh| {
-            let read = snapshot(&fresh);
-            *guard = Some(fresh);
-            read
-        });
-        drop(guard);
-        if let Err(outcome) = reply.send(outcome) {
-            report_unclaimed(&project_path, outcome);
-        }
-    });
-    answer
-        .await
-        .map_err(|_| "journal baseline task stopped unexpectedly".to_string())?
+/// Where a full read anchors the copy: the journal seq it will catch up from.
+enum Anchor {
+    /// The seq the copy was just caught up to; nothing to look up.
+    Known(i64),
+    /// Look the head up first; `hint` is the last seq seen, if any.
+    Find { hint: i64 },
 }
 
-/// Logs the result of a full read whose request is gone: nobody else will.
+/// Work on one project's copy that may outlive its request.
+struct Job {
+    source: Arc<dyn JournalSource>,
+    path: PathBuf,
+}
+
+impl Job {
+    /// Answers from a plain read, then builds the copy in the same task,
+    /// which keeps the project's lock throughout.
+    ///
+    /// When the page gives up on the request, axum drops this future — but
+    /// not the task, so the copy is still built. A panic in the task arrives
+    /// here as an error; the old copy stays.
+    async fn answer_then_build(self, guard: SlotGuard) -> Result<JournalRead, String> {
+        let hint = guard.as_ref().map_or(0, |c| c.seq);
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let first = self.plain_read().await;
+            let read_ok = first.is_ok();
+            if let Err(unclaimed) = reply.send(first) {
+                report_unclaimed(&self.path, unclaimed);
+            }
+            if read_ok {
+                self.build(guard, Anchor::Find { hint }).await;
+            }
+        });
+        answer
+            .await
+            .map_err(|_| "journal read task stopped unexpectedly".to_string())?
+    }
+
+    async fn plain_read(&self) -> Result<JournalRead, String> {
+        let started = Instant::now();
+        let read = self.source.read_all(&self.path).await;
+        tracing::info!(
+            project = %self.path.display(),
+            duration_ms = started.elapsed().as_millis() as u64,
+            ok = read.is_ok(),
+            "journal: answered from a plain read, the copy is built next"
+        );
+        read
+    }
+
+    /// Reads everything and stores it as the project's copy. Runs detached,
+    /// so a failure is logged here; the old copy then stays.
+    async fn build(self, mut guard: SlotGuard, anchor: Anchor) {
+        let started = Instant::now();
+        tracing::info!(project = %self.path.display(), "journal full read started");
+        let duration_ms = || started.elapsed().as_millis() as u64;
+        match self.read_copy(anchor, started).await {
+            Ok(fresh) => {
+                tracing::info!(
+                    project = %self.path.display(),
+                    duration_ms = duration_ms(),
+                    beads = fresh.copy.beads().len(),
+                    comments = fresh.copy.comment_total(),
+                    seq = fresh.seq,
+                    "journal full read finished"
+                );
+                *guard = Some(fresh);
+            }
+            Err(error) => tracing::warn!(
+                project = %self.path.display(),
+                duration_ms = duration_ms(),
+                error,
+                "journal full read failed, old copy kept"
+            ),
+        }
+    }
+
+    /// The anchor comes before the read, so a change committed while bd
+    /// reads is after it, and the next catch-up applies it. Records already
+    /// in the read are applied again, which leaves the same state.
+    async fn read_copy(&self, anchor: Anchor, started: Instant) -> Result<CachedProject, String> {
+        let seq = match anchor {
+            Anchor::Known(seq) => seq,
+            Anchor::Find { hint } => self.source.find_head(&self.path, hint).await?,
+        };
+        let (beads, _) = self.source.read_all(&self.path).await?;
+        Ok(CachedProject {
+            copy: ProjectCopy::new(beads),
+            seq,
+            baseline_at: started,
+            refreshed_at: started,
+        })
+    }
+}
+
+/// Logs the result of a plain read whose request is gone: nobody else will.
 fn report_unclaimed(project_path: &Path, outcome: Result<JournalRead, String>) {
     match outcome {
         Ok((beads, _)) => tracing::info!(
             project = %project_path.display(),
             beads = beads.len(),
-            "journal baseline finished after its request was gone, copy kept"
+            "journal plain read finished after its request was gone, building the copy"
         ),
         Err(error) => tracing::warn!(
             project = %project_path.display(),
             error,
-            "journal baseline failed after its request was gone"
+            "journal plain read failed after its request was gone"
         ),
     }
 }
@@ -571,9 +698,13 @@ fn snapshot(cached: &CachedProject) -> JournalRead {
 
 /// Applies new records to the copy. Returns `false` when the journal can no
 /// longer be followed and a full re-read is needed.
-async fn catch_up(project_path: &Path, cached: &mut CachedProject) -> Result<bool, String> {
+async fn catch_up(
+    source: &dyn JournalSource,
+    project_path: &Path,
+    cached: &mut CachedProject,
+) -> Result<bool, String> {
     let started = Instant::now();
-    let records = match fetch_after(project_path, cached.seq, true).await? {
+    let records = match source.fetch_after(project_path, cached.seq).await? {
         Fetch::Records(records) => records,
         Fetch::Lost(reason) => {
             tracing::info!(project = %project_path.display(), reason, "journal catch-up lost its place, re-reading everything");
@@ -596,40 +727,6 @@ fn apply_all(copy: &mut ProjectCopy, seq: &mut i64, records: Vec<JournalRecord>)
         *seq = record.seq;
         copy.apply(record);
     }
-}
-
-/// Full read: find the head, read everything through the bd CLI, then apply
-/// the records written in the meantime.
-async fn baseline(project_path: &Path, hint: i64) -> Result<CachedProject, String> {
-    let started = Instant::now();
-    tracing::info!(project = %project_path.display(), "journal baseline started");
-
-    let head = find_head(project_path, hint).await?;
-    let (beads, _) = super::beads::read_beads_from_cli(project_path, None).await?;
-    let mut copy = ProjectCopy::new(beads);
-    let mut seq = head;
-    let records = match fetch_after(project_path, head, false).await? {
-        Fetch::Records(records) => records,
-        Fetch::Lost(reason) => {
-            return Err(format!("journal moved during the baseline: {}", reason))
-        }
-    };
-    apply_all(&mut copy, &mut seq, records);
-
-    tracing::info!(
-        project = %project_path.display(),
-        duration_ms = started.elapsed().as_millis() as u64,
-        beads = copy.beads().len(),
-        comments = copy.comment_total(),
-        seq,
-        "journal baseline finished"
-    );
-    Ok(CachedProject {
-        copy,
-        seq,
-        baseline_at: started,
-        refreshed_at: started,
-    })
 }
 
 #[cfg(test)]
@@ -904,60 +1001,342 @@ mod tests {
             .unwrap_or_default()
     }
 
+    // -- The cache against a fake bd ----------------------------------------
+
+    /// How a `read_all` call of the fake behaves.
+    enum ReadPlan {
+        /// Waits until the sender is used or dropped.
+        Hold(tokio::sync::oneshot::Receiver<()>),
+        /// Right after taking its snapshot, a bead with this id is written:
+        /// a change committed while bd is still reading.
+        WriteAfter(&'static str),
+        Fail,
+        Panic,
+    }
+
+    #[derive(Default)]
+    struct FakeState {
+        beads: Vec<(String, String)>,
+        /// Record lines; a record's seq is its index + 1.
+        journal: Vec<String>,
+        calls: Vec<&'static str>,
+        read_calls: usize,
+        plans: HashMap<usize, ReadPlan>,
+        running: usize,
+        overlapped: bool,
+    }
+
+    /// bd stand-in: a bead list and a journal in memory. It notes every call
+    /// and whether two ever ran at the same time.
+    #[derive(Default)]
+    struct FakeBd {
+        state: std::sync::Mutex<FakeState>,
+    }
+
+    impl FakeBd {
+        fn with_beads(ids: &[&str]) -> Arc<Self> {
+            let fake = Arc::new(Self::default());
+            for id in ids {
+                fake.write(id);
+            }
+            fake
+        }
+
+        fn state(&self) -> std::sync::MutexGuard<'_, FakeState> {
+            self.state.lock().unwrap()
+        }
+
+        /// A `bd create`: the bead appears in the list and in the journal.
+        fn write(&self, id: &str) {
+            let mut state = self.state();
+            state.beads.push((id.to_string(), "T".to_string()));
+            let seq = state.journal.len() + 1;
+            state.journal.push(format!(
+                r#"{{"seq":{seq},"op":"create","issue_id":"{id}","issue":{{"id":"{id}","title":"T","status":"open"}}}}"#
+            ));
+        }
+
+        /// Sets how the `call`-th `read_all` (counting from 1) behaves.
+        fn plan_read(&self, call: usize, plan: ReadPlan) {
+            self.state().plans.insert(call, plan);
+        }
+
+        /// Holds the `call`-th `read_all` until the returned sender is used.
+        fn hold_read(&self, call: usize) -> tokio::sync::oneshot::Sender<()> {
+            let (open, gate) = tokio::sync::oneshot::channel();
+            self.plan_read(call, ReadPlan::Hold(gate));
+            open
+        }
+
+        fn calls(&self) -> Vec<&'static str> {
+            self.state().calls.clone()
+        }
+
+        fn overlapped(&self) -> bool {
+            self.state().overlapped
+        }
+
+        fn enter(&self, call: &'static str) -> Option<ReadPlan> {
+            let mut state = self.state();
+            state.calls.push(call);
+            state.running += 1;
+            state.overlapped |= state.running > 1;
+            if call != "read_all" {
+                return None;
+            }
+            state.read_calls += 1;
+            let n = state.read_calls;
+            state.plans.remove(&n)
+        }
+
+        fn leave(&self) {
+            self.state().running -= 1;
+        }
+
+        fn list(&self) -> Vec<Bead> {
+            let state = self.state();
+            let json = |(id, title): &(String, String)| {
+                format!(r#"{{"id":"{id}","title":"{title}","status":"open"}}"#)
+            };
+            state.beads.iter().map(|b| bead(&json(b))).collect()
+        }
+
+        async fn fake_read_all(&self) -> Result<JournalRead, String> {
+            let plan = self.enter("read_all");
+            tokio::task::yield_now().await;
+            let late = match plan {
+                Some(ReadPlan::Hold(gate)) => {
+                    let _ = gate.await;
+                    None
+                }
+                Some(ReadPlan::WriteAfter(id)) => Some(id),
+                Some(ReadPlan::Fail) => {
+                    self.leave();
+                    return Err("bd list failed".to_string());
+                }
+                Some(ReadPlan::Panic) => {
+                    self.leave();
+                    panic!("bd reader bug");
+                }
+                None => None,
+            };
+            let beads = self.list();
+            if let Some(id) = late {
+                self.write(id);
+            }
+            self.leave();
+            Ok((beads, 0))
+        }
+
+        async fn fake_find_head(&self) -> Result<i64, String> {
+            self.enter("find_head");
+            tokio::task::yield_now().await;
+            let head = self.state().journal.len() as i64;
+            self.leave();
+            Ok(head)
+        }
+
+        async fn fake_fetch_after(&self, seq: i64) -> Result<Fetch, String> {
+            self.enter("fetch_after");
+            tokio::task::yield_now().await;
+            let since = (seq - 1).max(0) as usize;
+            let records = self.state().journal.iter().skip(since).map(|l| record(l)).collect();
+            self.leave();
+            Ok(anchored(records, seq))
+        }
+    }
+
+    impl JournalSource for FakeBd {
+        fn read_all<'a>(&'a self, _: &'a Path) -> BdResult<'a, JournalRead> {
+            Box::pin(self.fake_read_all())
+        }
+
+        fn find_head<'a>(&'a self, _: &'a Path, _hint: i64) -> BdResult<'a, i64> {
+            Box::pin(self.fake_find_head())
+        }
+
+        fn fetch_after<'a>(&'a self, _: &'a Path, seq: i64) -> BdResult<'a, Fetch> {
+            Box::pin(self.fake_fetch_after(seq))
+        }
+    }
+
+    const PROJECT: &str = "/p/fake";
+    const NEVER: Duration = Duration::from_secs(3600);
+    const QUICK: Duration = Duration::from_secs(2);
+
+    fn cache_on(fake: &Arc<FakeBd>, reread_after: Duration) -> JournalCache {
+        JournalCache::with_source(fake.clone(), reread_after)
+    }
+
+    async fn read(cache: &JournalCache, full: bool) -> Vec<String> {
+        let (beads, _) = tokio::time::timeout(QUICK, cache.read(Path::new(PROJECT), full))
+            .await
+            .expect("answered without waiting for background work")
+            .expect("read succeeds");
+        beads.into_iter().map(|b| b.id).collect()
+    }
+
+    /// Waits until background work lets go of the project; returns the ids
+    /// and seq of the stored copy (`-1` when there is none).
+    async fn stored(cache: &JournalCache) -> (Vec<String>, i64) {
+        let slot = cache.slot(Path::new(PROJECT));
+        let guard = tokio::time::timeout(QUICK, slot.lock())
+            .await
+            .expect("background work lets go of the project");
+        (stored_ids(&guard), guard.as_ref().map_or(-1, |c| c.seq))
+    }
+
+    fn preset(cache: &JournalCache, ids: &[&str], seq: i64) {
+        let mut cached = cached_with(ids);
+        cached.seq = seq;
+        let slot = cache.slot(Path::new(PROJECT));
+        *slot.try_lock().expect("slot is free") = Some(cached);
+    }
+
     #[tokio::test]
-    async fn dropped_request_does_not_cancel_the_baseline() {
-        let slot: Slot = Arc::default();
-        let (finish, finished) = tokio::sync::oneshot::channel::<()>();
-        let work = async move {
-            let _ = finished.await;
-            Ok(cached_with(&["t-1", "t-2"]))
-        };
-        let guard = slot.clone().lock_owned().await;
-        let request = store_detached(guard, PathBuf::from("/p/a"), work);
+    async fn empty_copy_is_answered_before_the_copy_is_built() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let open = fake.hold_read(2);
+        let cache = cache_on(&fake, NEVER);
+
+        assert_eq!(read(&cache, false).await, ["t-1"]);
+        assert_eq!(fake.calls()[0], "read_all", "no head scan before the answer");
+
+        open.send(()).expect("the copy is still being built");
+        assert_eq!(stored(&cache).await, (vec!["t-1".to_string()], 1));
+        assert_eq!(fake.calls(), ["read_all", "find_head", "read_all"]);
+    }
+
+    #[tokio::test]
+    async fn stale_copy_is_served_at_once_and_reread_in_background() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let cache = cache_on(&fake, Duration::ZERO);
+        read(&cache, false).await;
+        stored(&cache).await;
+
+        fake.write("t-2");
+        let open = fake.hold_read(3);
+        assert_eq!(read(&cache, false).await, ["t-1", "t-2"], "caught up, not waiting");
+
+        open.send(()).expect("the re-read is still running");
+        assert_eq!(stored(&cache).await.1, 2, "anchored on the caught-up seq");
+        assert_eq!(
+            fake.calls()[3..],
+            ["fetch_after", "read_all"],
+            "the caught-up seq is the anchor, no head scan"
+        );
+    }
+
+    #[tokio::test]
+    async fn change_committed_during_the_first_build_is_not_lost() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        fake.plan_read(2, ReadPlan::WriteAfter("t-late"));
+        let cache = cache_on(&fake, NEVER);
+        read(&cache, false).await;
+        assert_eq!(stored(&cache).await, (vec!["t-1".to_string()], 1));
+
+        assert_eq!(read(&cache, false).await, ["t-1", "t-late"]);
+    }
+
+    #[tokio::test]
+    async fn change_committed_during_a_reread_is_not_lost() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let cache = cache_on(&fake, Duration::ZERO);
+        read(&cache, false).await;
+        stored(&cache).await;
+
+        fake.plan_read(3, ReadPlan::WriteAfter("t-late"));
+        read(&cache, false).await;
+        assert_eq!(stored(&cache).await.1, 1);
+
+        assert_eq!(read(&cache, false).await, ["t-1", "t-late"]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn only_one_bd_call_runs_at_a_time() {
+        let fake = FakeBd::with_beads(&["t-1", "t-2"]);
+        let cache = Arc::new(cache_on(&fake, Duration::ZERO));
+        let requests: Vec<_> = (0..8)
+            .map(|i| {
+                let cache = cache.clone();
+                tokio::spawn(async move { cache.read(Path::new(PROJECT), i % 3 == 0).await })
+            })
+            .collect();
+        for request in requests {
+            request.await.expect("no panic").expect("read succeeds");
+        }
+        stored(&cache).await;
+        assert!(fake.calls().len() >= 4, "calls: {:?}", fake.calls());
+        assert!(!fake.overlapped(), "two bd calls ran at once: {:?}", fake.calls());
+    }
+
+    #[tokio::test]
+    async fn dropped_request_does_not_cancel_the_build() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let open = fake.hold_read(1);
+        let cache = cache_on(&fake, NEVER);
 
         // The page gives up while bd is still reading: the request is dropped.
+        let request = cache.read(Path::new(PROJECT), false);
         let gave_up = tokio::time::timeout(Duration::from_millis(50), request).await;
-        assert!(gave_up.is_err(), "the baseline was still running");
+        assert!(gave_up.is_err(), "bd was still reading");
 
-        finish.send(()).expect("baseline still waiting");
-        let stored = tokio::time::timeout(Duration::from_secs(5), slot.lock())
-            .await
-            .expect("the baseline task releases the lock");
-        assert_eq!(stored_ids(&stored), vec!["t-1", "t-2"]);
+        open.send(()).expect("the read is still waiting");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(stored(&cache).await, (vec!["t-1".to_string()], 1));
     }
 
     #[tokio::test]
-    async fn waiting_request_gets_the_baseline_result() {
-        let slot: Slot = Arc::default();
-        let guard = slot.clone().lock_owned().await;
-        let work = async { Ok(cached_with(&["t-1"])) };
-        let (beads, comments) = store_detached(guard, PathBuf::from("/p/a"), work)
-            .await
-            .expect("baseline succeeds");
-        assert_eq!(beads.len(), 1);
-        assert_eq!(comments, 0);
-        assert_eq!(stored_ids(&*slot.lock().await), vec!["t-1"]);
+    async fn failed_reread_keeps_the_caught_up_copy() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let cache = cache_on(&fake, Duration::ZERO);
+        read(&cache, false).await;
+        stored(&cache).await;
+
+        fake.write("t-2");
+        fake.plan_read(3, ReadPlan::Fail);
+        assert_eq!(read(&cache, false).await, ["t-1", "t-2"]);
+        assert_eq!(stored(&cache).await, (vec!["t-1".to_string(), "t-2".to_string()], 2));
     }
 
     #[tokio::test]
-    async fn failed_or_panicking_baseline_keeps_the_old_copy() {
-        let slot: Slot = Arc::new(tokio::sync::Mutex::new(Some(cached_with(&["old"]))));
+    async fn failed_or_panicking_first_read_is_an_error_and_keeps_the_old_copy() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let cache = cache_on(&fake, NEVER);
+        preset(&cache, &["old"], 1);
 
-        let guard = slot.clone().lock_owned().await;
-        let failed = store_detached(guard, PathBuf::from("/p/a"), async {
-            Err("bd failed".to_string())
-        })
-        .await;
-        assert_eq!(failed.err().as_deref(), Some("bd failed"));
-        assert_eq!(stored_ids(&*slot.lock().await), vec!["old"]);
+        fake.plan_read(1, ReadPlan::Fail);
+        let failed = cache.read(Path::new(PROJECT), true).await;
+        assert_eq!(failed.err().as_deref(), Some("bd list failed"));
+        assert_eq!(stored(&cache).await, (vec!["old".to_string()], 1));
 
-        let guard = slot.clone().lock_owned().await;
-        let panicked = store_detached(guard, PathBuf::from("/p/a"), async {
-            panic!("baseline bug");
-        })
-        .await;
+        fake.plan_read(2, ReadPlan::Panic);
+        let panicked = cache.read(Path::new(PROJECT), true).await;
         assert!(panicked.is_err(), "a panic becomes an error, not a crash");
-        assert_eq!(stored_ids(&*slot.lock().await), vec!["old"]);
+        assert_eq!(stored(&cache).await, (vec!["old".to_string()], 1));
+    }
+
+    #[tokio::test]
+    async fn lost_journal_is_answered_from_a_plain_read() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let cache = cache_on(&fake, NEVER);
+        // The copy is anchored on a record the journal no longer has.
+        preset(&cache, &["old"], 5);
+
+        assert_eq!(read(&cache, false).await, ["t-1"]);
+        assert_eq!(stored(&cache).await, (vec!["t-1".to_string()], 1));
+        assert_eq!(fake.calls(), ["fetch_after", "read_all", "find_head", "read_all"]);
+    }
+
+    #[tokio::test]
+    async fn full_read_asks_bd_not_the_copy() {
+        let fake = FakeBd::with_beads(&["t-1"]);
+        let cache = cache_on(&fake, NEVER);
+        preset(&cache, &["old"], 1);
+
+        assert_eq!(read(&cache, true).await, ["t-1"]);
+        assert_eq!(fake.calls()[0], "read_all");
+        assert_eq!(stored(&cache).await, (vec!["t-1".to_string()], 1));
     }
 
     #[test]
