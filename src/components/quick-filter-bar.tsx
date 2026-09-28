@@ -146,7 +146,7 @@ export function QuickFilterBar({
     <div
       role="toolbar"
       aria-label="Quick filters"
-      className="flex items-center gap-3 rounded-xl bg-surface-raised/80 backdrop-blur border border-b-default px-3 py-2"
+      className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-raised/80 backdrop-blur border border-b-default px-3 py-2"
     >
       {/* Search Input */}
       <div className="relative">
