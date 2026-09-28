@@ -16,7 +16,7 @@ import { formatBeadId, isBlocked, truncate } from "@/lib/bead-utils";
 import { closeBead } from "@/lib/cli";
 import { canCloseEpic, computeEpicProgress } from "@/lib/epic-parser";
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
-import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
+import { BUILTIN_STATUSES, getStatusBadgeClasses, isDoneStatus } from "@/lib/statuses";
 import { cn, isDoltProject } from "@/lib/utils";
 import type { Bead, Epic, StatusInfo } from "@/types";
 
@@ -257,6 +257,17 @@ export function EpicCard({
     </div>
   );
 
+  // Status mark the board sets when the epic sits outside its own column (Pinned, unknown status)
+  const statusMark = epic._statusBadge && (
+    <Badge
+      variant="outline"
+      size="xs"
+      className={cn("theme-badge shrink-0", getStatusBadgeClasses(epic._statusBadge.variant))}
+    >
+      {epic._statusBadge.label}
+    </Badge>
+  );
+
   // ─── Layout: compact-row (Linear Minimal) ───
   if (layout === 'compact-row') {
     return (
@@ -276,6 +287,7 @@ export function EpicCard({
               <span className="text-xs text-t-muted font-mono shrink-0">{formatBeadId(epic.id)}</span>
               <span className="text-[13px] font-semibold text-t-primary truncate">{epic.title}</span>
               <span className="text-[10px] font-semibold text-epic shrink-0">EPIC</span>
+              {statusMark}
             </div>
             {progressSection}
             {closeButton}
@@ -316,6 +328,7 @@ export function EpicCard({
             <span className="theme-badge text-[10px] font-semibold px-1.5 py-0.5 bg-epic/15 text-epic">
               Epic
             </span>
+            {statusMark}
             <span className="theme-badge text-[10px] px-1.5 py-0.5 bg-surface-overlay text-t-tertiary">
               {progressPercentage}% · {children.length} tasks
             </span>
@@ -366,6 +379,7 @@ export function EpicCard({
               isBlocked={isBlocked(epic, allBeads, statuses)}
               onNavigate={onNavigateToDependency}
             />
+            {statusMark}
             <Badge variant="outline" className="text-[10px] px-2 py-0.5 border-epic/30 text-epic bg-epic/20 font-semibold">EPIC</Badge>
           </div>
         </div>

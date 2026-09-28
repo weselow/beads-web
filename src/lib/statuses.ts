@@ -3,7 +3,7 @@
  * the project's own from `status.custom`, each in one of four groups.
  */
 
-import type { StatusCategory, StatusInfo } from "@/types";
+import type { StatusBadgeInfo, StatusCategory, StatusInfo } from "@/types";
 
 /**
  * bd's built-in statuses in the order bd 1.3.0 lists them. Mirrors the
@@ -31,4 +31,20 @@ export function getStatusCategory(
 /** Whether the status is in the done group (`closed` and any own done status). */
 export function isDoneStatus(name: string, statuses: readonly StatusInfo[]): boolean {
   return getStatusCategory(name, statuses) === "done";
+}
+
+/**
+ * Colour classes for the status mark a card shows when the board puts a bead
+ * outside its own column: warning = orange (unknown status), muted = grey
+ * (pinned), info = blue.
+ */
+export function getStatusBadgeClasses(variant: StatusBadgeInfo["variant"]): string {
+  switch (variant) {
+    case "warning":
+      return "bg-blocked-accent/15 text-blocked-accent border-blocked-accent/30";
+    case "muted":
+      return "bg-t-muted/15 text-t-tertiary border-t-muted/30";
+    case "info":
+      return "bg-info/15 text-info border-info/30";
+  }
 }
