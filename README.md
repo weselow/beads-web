@@ -12,7 +12,7 @@
 
 <br>
 
-[Why](#why) · [Origin](#origin) · [Features](#features) · [Themes](#themes) · [Installation](#installation) · [Development](#development) · [FAQ](#faq) · [Troubleshooting](docs/troubleshooting/README.md)
+[Why](#why) · [Origin](#origin) · [Features](#features) · [Events journal](#bd-events-journal) · [Themes](#themes) · [Installation](#installation) · [Development](#development) · [FAQ](#faq) · [Troubleshooting](docs/troubleshooting/README.md)
 
 **[Русская версия](README-ru.md)**
 
@@ -65,6 +65,32 @@ Full changelog with rationale: [docs/changelog.md](docs/changelog.md)
 - **11 themes** — Default Dark, Glassmorphism, Neo-Brutalist, Linear Minimal, Soft Light, Notion Warm, GitHub Clean, plus Catppuccin Latte, Frappe, Macchiato, and Mocha
 - **Dolt integration** — connect to Dolt databases directly, no filesystem path needed
 - **Real-time sync** — SSE file watcher for local projects, polling for Dolt
+
+## bd events journal
+
+Since bd 1.3.0, bd can keep its own ordered log of changes — the events journal. When a project has it turned on, Beads Web reads the whole project once, keeps it in memory, and after that asks bd only for what changed since the last poll.
+
+**Who benefits.** Projects in bd's default embedded mode: without the journal, Beads Web re-reads the whole project on every poll. Projects in server mode are read directly over SQL and do not need it.
+
+**Turn it on or off** — per project, run in the project folder:
+
+```bash
+bd config set events-journal true    # on
+bd config set events-journal false   # off
+```
+
+The setting is written to `.beads/config.yaml` and affects every bd command in that project, agents included. In our measurements, writes did not get noticeably slower.
+
+**What changes on the board** (measured on a project with ~1100 tasks):
+- changes show up within about 5 s instead of 15;
+- deleted tasks disappear from the board;
+- each poll takes about 1–2 s instead of about 10 s.
+
+**Limits:**
+- The first open of a project is still a full read — 10–25 s on a large project.
+- bd keeps the journal for 7 days or 100,000 records. When the part Beads Web needs is gone, it re-reads the whole project.
+- `bd dolt pull` is not journaled, so Beads Web re-reads the whole project every 10 minutes to pick up pulled changes.
+- Changes made with raw `bd sql` are not journaled either; they show up at the next full re-read.
 
 ## Themes
 
