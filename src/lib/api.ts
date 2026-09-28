@@ -152,10 +152,15 @@ export interface CreateBeadInput {
 }
 
 export const beads = {
-  read: async (path: string, updatedAfter?: string) => {
+  /**
+   * `full` asks the server to re-read the project from scratch instead of
+   * answering from its in-memory copy (journal-backed projects only).
+   */
+  read: async (path: string, updatedAfter?: string, full?: boolean) => {
     const params = new URLSearchParams({ path });
     if (updatedAfter) params.set('updated_after', updatedAfter);
-    const data = await fetchApi<{ beads: Bead[]; source?: string; comment_total?: number }>(
+    if (full) params.set('full', '1');
+    const data = await fetchApi<{ beads: Bead[]; source?: string; comment_total?: number; complete?: boolean }>(
       `/api/beads?${params}`
     );
     BeadsResponseSchema.parse(data);

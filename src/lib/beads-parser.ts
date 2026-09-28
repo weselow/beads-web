@@ -113,12 +113,23 @@ export interface LoadProjectBeadsResult {
    * records. `undefined` means the server did not report it.
    */
   commentTotal?: number;
+  /**
+   * `true` when `beads` is the whole list even on an incremental request, so a
+   * bead missing from it was deleted. `undefined` for the other sources.
+   */
+  complete?: boolean;
 }
 
-export async function loadProjectBeads(projectPath: string, options?: { updatedAfter?: string }): Promise<Bead[]>;
-export async function loadProjectBeads(projectPath: string, options: { withSource: true; updatedAfter?: string }): Promise<LoadProjectBeadsResult>;
-export async function loadProjectBeads(projectPath: string, options?: { withSource?: true; updatedAfter?: string }): Promise<Bead[] | LoadProjectBeadsResult> {
-  const result = await api.beads.read(projectPath, options?.updatedAfter);
+interface LoadProjectBeadsOptions {
+  updatedAfter?: string;
+  /** Ask the server to re-read the project from scratch (`full=1`). */
+  full?: boolean;
+}
+
+export async function loadProjectBeads(projectPath: string, options?: LoadProjectBeadsOptions): Promise<Bead[]>;
+export async function loadProjectBeads(projectPath: string, options: LoadProjectBeadsOptions & { withSource: true }): Promise<LoadProjectBeadsResult>;
+export async function loadProjectBeads(projectPath: string, options?: LoadProjectBeadsOptions & { withSource?: true }): Promise<Bead[] | LoadProjectBeadsResult> {
+  const result = await api.beads.read(projectPath, options?.updatedAfter, options?.full);
   // Map statuses, filter tombstones, ensure comments array
   const mapped: Bead[] = [];
   for (const bead of result.beads) {
@@ -129,7 +140,12 @@ export async function loadProjectBeads(projectPath: string, options?: { withSour
     }
   }
   if (options?.withSource) {
-    return { beads: mapped, source: result.source, commentTotal: result.comment_total };
+    return {
+      beads: mapped,
+      source: result.source,
+      commentTotal: result.comment_total,
+      complete: result.complete,
+    };
   }
   return mapped;
 }

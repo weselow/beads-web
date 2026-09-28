@@ -19,9 +19,27 @@ import { isDoltProject } from "@/lib/utils";
 import type { Bead, BeadStatus } from "@/types";
 
 export interface RefreshBeadsOptions {
-  /** Ignore the incremental cursor and replace state with a complete response. */
+  /**
+   * Ignore the incremental cursor, replace state with a complete response and
+   * ask the server to re-read the project from scratch (`full=1`).
+   */
   full?: boolean;
 }
+
+interface LoadBeadsOptions {
+  /** Ignore the incremental cursor and replace state with a complete response. */
+  full?: boolean;
+  /**
+   * Also make the server re-read the project from scratch. Expensive for
+   * journal-backed projects, so only an explicit manual refresh asks for it.
+   */
+  reread?: boolean;
+}
+
+/** Poll period for projects whose server keeps up through the bd events journal. */
+const JOURNAL_POLL_MS = 5_000;
+/** Poll period for the other database-backed sources. */
+const DEFAULT_POLL_MS = 15_000;
 
 /**
  * Result type for the useBeads hook
@@ -96,11 +114,13 @@ export function useBeads(projectPath: string): UseBeadsResult {
   const lastUpdatedRef = useRef<string | null>(null);
   // Total comment count reported by the server; null when it reports none.
   const commentTotalRef = useRef<number | null>(null);
+  // Whether the last response was the whole list (journal-backed source).
+  const completeRef = useRef(false);
 
   /**
    * Load beads from the project directory
    */
-  const loadBeads = useCallback(async (options?: RefreshBeadsOptions) => {
+  const loadBeads = useCallback(async (options?: LoadBeadsOptions) => {
     if (!projectPath) {
       setBeads([]);
       setBeadsByStatus(EMPTY_GROUPED);
@@ -128,11 +148,13 @@ export function useBeads(projectPath: string): UseBeadsResult {
       const result = await loadProjectBeads(projectPath, {
         withSource: true,
         updatedAfter,
+        full: options?.reread,
       });
       const fetchedBeads = result.beads;
       setDataSource(result.source ?? null);
       commentTotalRef.current =
         typeof result.commentTotal === "number" ? result.commentTotal : null;
+      completeRef.current = result.complete === true;
 
       // Compute max updated_at from fetched results
       const maxUpdated = fetchedBeads.reduce((max, b) => {
@@ -142,7 +164,9 @@ export function useBeads(projectPath: string): UseBeadsResult {
       if (maxUpdated) lastUpdatedRef.current = maxUpdated;
 
       let loadedBeads: Bead[];
-      if (!options?.full && hasLoadedRef.current && updatedAfter) {
+      // A complete response is the whole list even when updatedAfter was sent;
+      // merging it would keep beads that were deleted.
+      if (!options?.full && hasLoadedRef.current && updatedAfter && !result.complete) {
         // Incremental update — merge changed beads into existing state
         setBeads(prev => {
           const beadMap = new Map(prev.map(b => [b.id, b]));
@@ -186,7 +210,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
    * Public refresh function for manual reload
    */
   const refresh = useCallback(async (options?: RefreshBeadsOptions) => {
-    await loadBeads(options);
+    await loadBeads({ full: options?.full, reread: options?.full });
   }, [loadBeads]);
 
   // Initial load when project path changes
@@ -194,6 +218,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
     hasLoadedRef.current = false;
     lastUpdatedRef.current = null;
     commentTotalRef.current = null;
+    completeRef.current = false;
     setDataSource(null);
     void loadBeads({ full: true });
   }, [loadBeads]);
@@ -228,10 +253,13 @@ export function useBeads(projectPath: string): UseBeadsResult {
    * not advance issue.updated_at, so the incremental read would miss it — the
    * server's project-wide comment total gives that away. When the server does
    * not report a total at all, fall back to a full read so no comment is lost.
+   * A complete response (journal-backed source) already holds every comment,
+   * so it never needs the second read.
    */
   const pollBeads = useCallback(async () => {
     const previousTotal = commentTotalRef.current;
     await loadBeads();
+    if (completeRef.current) return;
     const currentTotal = commentTotalRef.current;
     if (currentTotal === null || currentTotal !== previousTotal) {
       await loadBeads({ full: true });
@@ -246,9 +274,12 @@ export function useBeads(projectPath: string): UseBeadsResult {
       (dataSource !== null && dataSource !== "jsonl");
     if (!projectPath || !shouldPoll) return;
 
+    // The journal-backed server answers from memory after a short catch-up,
+    // so it can be asked more often.
+    const period = dataSource === "cli-journal" ? JOURNAL_POLL_MS : DEFAULT_POLL_MS;
     const intervalId = setInterval(() => {
       void pollBeads();
-    }, 15_000);
+    }, period);
 
     return () => clearInterval(intervalId);
   }, [projectPath, dataSource, pollBeads]);
