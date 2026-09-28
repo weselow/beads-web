@@ -572,6 +572,65 @@ fn parse_beads_from_jsonl(contents: &str) -> Vec<Bead> {
 /// Dolt-only path prefix: `dolt://beads_dbname`
 const DOLT_PATH_PREFIX: &str = "dolt://";
 
+/// Longest `stale_reason` sent to the page, in characters, ellipsis included.
+const STALE_REASON_MAX_CHARS: usize = 300;
+
+/// Trims surrounding whitespace from a bd error and cuts it to
+/// [`STALE_REASON_MAX_CHARS`] characters, ending with `…` when cut. Counts
+/// characters, not bytes, so a Cyrillic message is never split mid-letter.
+fn trim_stale_reason(error: &str) -> String {
+    let error = error.trim();
+    if error.chars().count() <= STALE_REASON_MAX_CHARS {
+        return error.to_string();
+    }
+    let mut reason: String = error.chars().take(STALE_REASON_MAX_CHARS - 1).collect();
+    reason.push('…');
+    reason
+}
+
+/// Fields that mark an `issues.jsonl` answer as a possibly old copy, served
+/// only because bd was found and refused to read the database.
+///
+/// `None` when bd is not installed: such a project lives on `issues.jsonl`
+/// alone and its data is as fresh as it gets. `jsonl_modified_at` (RFC 3339,
+/// UTC) is left out when the file time could not be read.
+fn stale_jsonl_fields(
+    bd_found: bool,
+    cli_error: &str,
+    modified: Option<std::time::SystemTime>,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    if !bd_found {
+        return None;
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert("stale_reason".into(), trim_stale_reason(cli_error).into());
+    if let Some(modified) = modified {
+        let at = chrono::DateTime::<Utc>::from(modified)
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        fields.insert("jsonl_modified_at".into(), at.into());
+    }
+    Some(fields)
+}
+
+/// Stale markers for an `issues.jsonl` answer that replaced a failed bd CLI
+/// read. Logs the stale fallback once, at warn — the CLI error itself is
+/// already logged by the caller.
+fn stale_fields_for_jsonl(
+    project: &str,
+    issues_path: &Path,
+    cli_error: &str,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let modified = std::fs::metadata(issues_path).and_then(|m| m.modified()).ok();
+    let fields = stale_jsonl_fields(super::find_bd().is_some(), cli_error, modified)?;
+    let modified_at = fields.get("jsonl_modified_at").and_then(|v| v.as_str()).unwrap_or("unknown");
+    tracing::warn!(
+        project = %project,
+        jsonl_modified_at = %modified_at,
+        "bd failed, serving stale issues.jsonl — the board shows an old copy"
+    );
+    Some(fields)
+}
+
 /// GET /api/beads?path=/path/to/project
 /// GET /api/beads?path=dolt://beads_dbname
 ///
@@ -676,6 +735,9 @@ pub async fn read_beads(
     // Only the bd CLI tier honours `updated_after`, so only it can return a
     // partial bead list whose own comments would undercount the project.
 
+    // Set only when Tier 3 stands in for a bd that was found but failed.
+    let mut stale_fields = None;
+
     // Tier 1: Try Dolt SQL (direct MySQL connection)
     let (beads, source, cli_comment_total) = 'fallback: {
         if dolt_manager.is_available() {
@@ -708,7 +770,7 @@ pub async fn read_beads(
         }
 
         // Tier 2b: Try bd CLI
-        match read_beads_from_cli(&project_path, params.updated_after.as_deref()).await {
+        let cli_err = match read_beads_from_cli(&project_path, params.updated_after.as_deref()).await {
             Ok((b, comment_total)) => {
                 let mode = if params.updated_after.is_some() { "incremental" } else { "full" };
                 tracing::info!(
@@ -722,8 +784,9 @@ pub async fn read_beads(
             }
             Err(cli_err) => {
                 tracing::warn!("bd CLI failed for {}: {}", path, cli_err);
+                cli_err
             }
-        }
+        };
 
         // Tier 3: JSONL file
         let issues_path = resolve_issues_path(&project_path);
@@ -734,7 +797,10 @@ pub async fn read_beads(
             );
         }
         match read_beads_from_jsonl(&issues_path) {
-            Ok(b) => (b, "jsonl", None),
+            Ok(b) => {
+                stale_fields = stale_fields_for_jsonl(&path, &issues_path, &cli_err);
+                (b, "jsonl", None)
+            }
             Err(e) => {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -752,6 +818,9 @@ pub async fn read_beads(
         // Tells the page this is the whole list, so beads missing from it
         // were deleted.
         body["complete"] = serde_json::Value::Bool(true);
+    }
+    if let (Some(fields), Some(obj)) = (stale_fields, body.as_object_mut()) {
+        obj.extend(fields);
     }
     (StatusCode::OK, Json(body))
 }
@@ -1342,6 +1411,62 @@ pub fn recompute_epic_statuses(issues_path: &Path) -> Result<Vec<String>, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- stale issues.jsonl fields ---
+
+    #[test]
+    fn test_stale_reason_short_text_kept_whole() {
+        assert_eq!(trim_stale_reason("  bd exited with 1: boom\n"), "bd exited with 1: boom");
+    }
+
+    #[test]
+    fn test_stale_reason_exactly_at_limit_not_cut() {
+        let text = "a".repeat(STALE_REASON_MAX_CHARS);
+        assert_eq!(trim_stale_reason(&text), text);
+    }
+
+    #[test]
+    fn test_stale_reason_long_text_cut_with_ellipsis() {
+        let text = "a".repeat(STALE_REASON_MAX_CHARS + 50);
+        let reason = trim_stale_reason(&text);
+        assert_eq!(reason.chars().count(), STALE_REASON_MAX_CHARS);
+        assert!(reason.ends_with('…'));
+        assert!(reason.starts_with("aaa"));
+    }
+
+    #[test]
+    fn test_stale_reason_cyrillic_cut_on_char_boundary() {
+        // Two bytes per letter: a byte-based cut would land mid-letter.
+        let text = "база ".repeat(100);
+        let reason = trim_stale_reason(&text);
+        assert_eq!(reason.chars().count(), STALE_REASON_MAX_CHARS);
+        assert!(reason.ends_with('…'));
+        let expected: String = text.chars().take(STALE_REASON_MAX_CHARS - 1).collect();
+        assert_eq!(reason, format!("{}…", expected));
+    }
+
+    #[test]
+    fn test_stale_fields_none_when_bd_missing() {
+        let modified = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        assert!(stale_jsonl_fields(false, "bd CLI not found", Some(modified)).is_none());
+    }
+
+    #[test]
+    fn test_stale_fields_with_modified_time() {
+        let modified = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let fields = stale_jsonl_fields(true, "schema version mismatch\n", Some(modified)).unwrap();
+        assert_eq!(fields["stale_reason"], "schema version mismatch");
+        assert_eq!(fields["jsonl_modified_at"], "2023-11-14T22:13:20Z");
+        assert_eq!(fields.len(), 2);
+    }
+
+    #[test]
+    fn test_stale_fields_without_modified_time() {
+        let fields = stale_jsonl_fields(true, "boom", None).unwrap();
+        assert_eq!(fields["stale_reason"], "boom");
+        assert!(!fields.contains_key("jsonl_modified_at"));
+        assert_eq!(fields.len(), 1);
+    }
 
     fn parse_params(query: &str) -> BeadsParams {
         let uri: axum::http::Uri = format!("/api/beads?{}", query).parse().unwrap();
