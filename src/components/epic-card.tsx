@@ -15,6 +15,7 @@ import * as api from "@/lib/api";
 import { formatBeadId, isBlocked, truncate } from "@/lib/bead-utils";
 import { closeBead } from "@/lib/cli";
 import { canCloseEpic, computeEpicProgress } from "@/lib/epic-parser";
+import { getProgressIndicatorClass, percentDone } from "@/lib/progress";
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
 import { BUILTIN_STATUSES, getStatusBadgeClasses, isDoneStatus } from "@/lib/statuses";
 import { cn, isDoltProject } from "@/lib/utils";
@@ -43,17 +44,6 @@ export interface EpicCardProps {
   readOnly?: boolean;
   /** The project's statuses, to tell which children are done; bd's built-in ones by default */
   statuses?: readonly StatusInfo[];
-}
-
-/**
- * Get progress bar indicator color based on completion percentage
- */
-function getProgressIndicatorClass(percentage: number): string {
-  if (percentage === 100) return "[&>*]:bg-progress-100";
-  if (percentage >= 75) return "[&>*]:bg-progress-75";
-  if (percentage >= 50) return "[&>*]:bg-progress-50";
-  if (percentage >= 25) return "[&>*]:bg-progress-25";
-  return "[&>*]:bg-progress-0";
 }
 
 /** Auto-refresh interval for PR statuses (30 seconds) */
@@ -150,9 +140,7 @@ export function EpicCard({
   }, [fetchChildPRStatuses]);
 
   const progress = computeEpicProgress(epic, allBeads, statuses);
-  const progressPercentage = progress.total > 0
-    ? Math.round((progress.completed / progress.total) * 100)
-    : 0;
+  const progressPercentage = percentDone(progress.completed, progress.total);
 
   const commentCount = (epic.comments ?? []).length;
 
