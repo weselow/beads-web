@@ -30,7 +30,7 @@ import {
   getStatusDotColor,
 } from "@/lib/bead-utils";
 import { updateTitle, updateDescription, updateStatus as cliUpdateStatus } from "@/lib/cli";
-import { ISSUE_TYPES, getIssueTypeMeta } from "@/lib/issue-types";
+import { getIssueTypeMeta, issueTypeChoices } from "@/lib/issue-types";
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from "@/lib/read-only";
 import { BUILTIN_STATUSES, isDoneStatus } from "@/lib/statuses";
 import { cn, isDoltProject } from "@/lib/utils";
@@ -349,7 +349,7 @@ export function BeadDetail({
                   title={readOnlyTitle}
                   className={METADATA_SELECT_CLASS}
                 >
-                  {ISSUE_TYPES.map((meta) => (
+                  {issueTypeChoices(bead.issue_type).map((meta) => (
                     <option key={meta.value} value={meta.value}>{meta.label}</option>
                   ))}
                 </select>

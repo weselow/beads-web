@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import * as api from "@/lib/api";
-import { ISSUE_TYPES } from "@/lib/issue-types";
+import { ISSUE_TYPES, descriptionPlaceholder } from "@/lib/issue-types";
 import { cn } from "@/lib/utils";
 
 const PRIORITIES = [
@@ -137,7 +137,7 @@ export function CreateBeadDialog({
               id="bead-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional details…"
+              placeholder={descriptionPlaceholder(parentId ? "task" : issueType)}
               rows={8}
               className="flex w-full rounded-md border border-b-strong bg-surface-overlay/50 px-3 py-2 text-sm text-t-primary placeholder:text-t-muted ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
             />
@@ -149,7 +149,7 @@ export function CreateBeadDialog({
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium text-t-secondary">Type</label>
                 <Select value={issueType} onValueChange={setIssueType}>
-                  <SelectTrigger className="bg-surface-overlay/50 border-b-strong text-t-primary">
+                  <SelectTrigger aria-label="Type" className="bg-surface-overlay/50 border-b-strong text-t-primary">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-surface-raised border-b-default">
