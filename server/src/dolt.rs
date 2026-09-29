@@ -157,8 +157,7 @@ impl DoltManager {
 
         // DOLT_COMMIT needs the database selected, and `USE` implicitly commits
         // whatever transaction is open — so it has to run first.
-        let use_query = format!("USE `{}`", db_name);
-        conn.query_drop(&use_query).await
+        conn.query_drop(use_statement(db_name)).await
             .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
 
         conn.query_drop("START TRANSACTION").await
@@ -235,11 +234,7 @@ impl DoltManager {
         let mut conn = self.pool.get_conn().await
             .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
 
-        let query = format!(
-            "UPDATE `{}`.issues SET {} WHERE id = :id",
-            db_name,
-            sets.join(", ")
-        );
+        let query = update_statement(db_name, &sets);
         conn.exec_drop(&query, mysql_async::Params::Named(params.into_iter().collect()))
             .await
             .map_err(|e| DoltError::QueryFailed(format!("update: {}", e)))?;
@@ -270,14 +265,30 @@ impl DoltManager {
     }
 }
 
+/// The database name as it goes into SQL text: in backticks, with backticks
+/// inside doubled. The name comes from the page's `dolt://…` path, and SQL
+/// has no parameters for names, so every statement goes through this.
+fn quoted_db(db_name: &str) -> String {
+    format!("`{}`", db_name.replace('`', "``"))
+}
+
+/// `USE <db>` — Dolt needs it before `DOLT_COMMIT`.
+fn use_statement(db_name: &str) -> String {
+    format!("USE {}", quoted_db(db_name))
+}
+
+/// `UPDATE` of one bead with the given `SET` clauses; values are parameters.
+fn update_statement(db_name: &str, sets: &[String]) -> String {
+    format!("UPDATE {}.issues SET {} WHERE id = :id", quoted_db(db_name), sets.join(", "))
+}
+
 /// Commits the working set of `db_name`; Dolt needs `USE` first.
 async fn commit_change(
     conn: &mut mysql_async::Conn,
     db_name: &str,
     commit_query: &str,
 ) -> Result<(), DoltError> {
-    let use_query = format!("USE `{}`", db_name.replace('`', "``"));
-    conn.query_drop(&use_query).await
+    conn.query_drop(use_statement(db_name)).await
         .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
     conn.query_drop(commit_query).await
         .map_err(|e| DoltError::QueryFailed(format!("dolt_commit: {}", e)))
@@ -303,9 +314,9 @@ pub fn sql_close_reason(reason: Option<&str>) -> &str {
 /// the reason never go into the text.
 fn close_statement(db_name: &str, id: &str, reason: &str, now: &str) -> (String, NamedParams) {
     let query = format!(
-        "UPDATE `{}`.issues SET status = 'closed', closed_at = :now, \
+        "UPDATE {}.issues SET status = 'closed', closed_at = :now, \
          close_reason = :reason, updated_at = :now WHERE id = :id",
-        db_name.replace('`', "``")
+        quoted_db(db_name)
     );
     let params: NamedParams = vec![
         (b"now".to_vec(), now.into()),
@@ -423,8 +434,8 @@ fn port_pool(port: u16) -> Pool {
 /// SQL that reads the project's own statuses (`bd config set status.custom`).
 fn status_custom_query(db_name: &str) -> String {
     format!(
-        "SELECT `value` FROM `{}`.`config` WHERE `key` = 'status.custom'",
-        db_name.replace('`', "``")
+        "SELECT `value` FROM {}.`config` WHERE `key` = 'status.custom'",
+        quoted_db(db_name)
     )
 }
 
@@ -496,11 +507,7 @@ pub async fn discover_database_on_port(port: u16) -> Result<String, DoltError> {
 
     // Try each database — look for one with an `issues` table
     for db_name in &db_names {
-        let query = format!(
-            "SELECT COUNT(*) FROM `{}`.`issues` LIMIT 1",
-            db_name.replace('`', "``")
-        );
-        match conn.query_first::<i64, _>(&query).await {
+        match conn.query_first::<i64, _>(count_issues_query(db_name)).await {
             Ok(Some(_)) => {
                 tracing::info!("Discovered beads database '{}' on port {}", db_name, port);
                 drop(conn);
@@ -585,8 +592,32 @@ fn issues_query(db_name: &str, has_defer_until: bool) -> String {
          DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%sZ') AS updated_at, \
          DATE_FORMAT(closed_at, '%Y-%m-%dT%H:%i:%sZ') AS closed_at, \
          close_reason, {} \
-         FROM `{}`.issues",
-        defer_until, db_name
+         FROM {}.issues",
+        defer_until, quoted_db(db_name)
+    )
+}
+
+/// Probe used to find the beads database among the server's databases.
+fn count_issues_query(db_name: &str) -> String {
+    format!("SELECT COUNT(*) FROM {}.`issues` LIMIT 1", quoted_db(db_name))
+}
+
+/// The `SELECT` for [`merge_comments`].
+fn comments_query(db_name: &str) -> String {
+    format!(
+        "SELECT id, issue_id, author, text, \
+         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
+         FROM {}.comments ORDER BY issue_id, id",
+        quoted_db(db_name)
+    )
+}
+
+/// The `SELECT` for [`merge_dependencies`]; `depends_on` is the column name
+/// read from the live schema (one of two known names).
+fn dependencies_query(db_name: &str, depends_on: &str) -> String {
+    format!(
+        "SELECT issue_id, `{}` AS depends_on, `type` FROM {}.dependencies",
+        depends_on, quoted_db(db_name)
     )
 }
 
@@ -624,13 +655,7 @@ async fn merge_comments(
     db_name: &str,
     mut beads: Vec<Bead>,
 ) -> Result<Vec<Bead>, DoltError> {
-    let query = format!(
-        "SELECT id, issue_id, author, text, \
-         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
-         FROM `{}`.comments ORDER BY issue_id, id",
-        db_name
-    );
-    let rows: Vec<Row> = conn.query(&query).await
+    let rows: Vec<Row> = conn.query(comments_query(db_name)).await
         .map_err(|e| DoltError::QueryFailed(format!("comments: {}", e)))?;
 
     let mut map: HashMap<String, Vec<Comment>> = HashMap::new();
@@ -723,8 +748,8 @@ fn build_dependency_insert(db_name: &str, schema: &DependencySchema) -> String {
 /// Assembles `INSERT INTO \`db\`.table (cols) VALUES (vals)` with quoted columns.
 fn format_insert(db_name: &str, table: &str, columns: &[&str], values: &[&str]) -> String {
     format!(
-        "INSERT INTO `{}`.{} ({}) VALUES ({})",
-        db_name,
+        "INSERT INTO {}.{} ({}) VALUES ({})",
+        quoted_db(db_name),
         table,
         columns.iter().map(|c| format!("`{}`", c)).collect::<Vec<_>>().join(", "),
         values.join(", "),
@@ -770,11 +795,7 @@ async fn merge_dependencies(
     beads: &mut [Bead],
 ) -> Result<(), DoltError> {
     let schema = dependency_schema(conn, db_name).await?;
-    let query = format!(
-        "SELECT issue_id, `{}` AS depends_on, `type` FROM `{}`.dependencies",
-        schema.depends_on, db_name
-    );
-    let rows: Vec<Row> = conn.query(&query).await
+    let rows: Vec<Row> = conn.query(dependencies_query(db_name, &schema.depends_on)).await
         .map_err(|e| DoltError::QueryFailed(format!("dependencies: {}", e)))?;
 
     let mut parent_map: HashMap<String, String> = HashMap::new();
@@ -1044,6 +1065,41 @@ mod tests {
         let obj = parsed.as_object().unwrap();
         assert_eq!(obj.len(), 2);
     }
+    // ── database name in SQL text ───────────────────────────────────────
+
+    #[test]
+    fn test_quoted_db_wraps_a_plain_name() {
+        assert_eq!(quoted_db("beads_x"), "`beads_x`");
+    }
+
+    #[test]
+    fn test_quoted_db_doubles_backticks_inside() {
+        // The name comes from the page's dolt://… path.
+        assert_eq!(quoted_db("a`b"), "`a``b`");
+        assert_eq!(quoted_db("x`; DROP DATABASE y; --"), "`x``; DROP DATABASE y; --`");
+    }
+
+    #[test]
+    fn test_every_statement_builder_quotes_the_db_name() {
+        let schema = DependencySchema { depends_on: "depends_on_id".to_string(), has_id: false };
+        let built = [
+            issues_query("a`b", true),
+            issues_query("a`b", false),
+            comments_query("a`b"),
+            dependencies_query("a`b", "depends_on_id"),
+            count_issues_query("a`b"),
+            update_statement("a`b", &["title = :title".to_string()]),
+            build_issue_insert("a`b", &[]),
+            build_dependency_insert("a`b", &schema),
+            close_statement("a`b", "x-1", "r", "2026-09-29 10:00:00").0,
+            status_custom_query("a`b"),
+        ];
+        for query in built {
+            assert!(query.contains("`a``b`."), "name not quoted in {}", query);
+        }
+        assert_eq!(use_statement("a`b"), "USE `a``b`");
+    }
+
     // ── create_bead statement builders ──────────────────────────────────
 
     #[test]
