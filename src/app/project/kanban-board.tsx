@@ -205,6 +205,14 @@ export default function KanbanBoard() {
     navigateToBead,
   } = useBeadDetail(beads);
 
+  // An idea opens in the same card as a board bead. The Ideas panel closes
+  // first: it is modal and sits on the same layer, so it would cover the card
+  // and block clicks on it.
+  const openIdea = useCallback((bead: Bead) => {
+    setIsIdeasOpen(false);
+    openBead(bead);
+  }, [openBead]);
+
   // Ref for search input (keyboard navigation)
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -463,7 +471,7 @@ export default function KanbanBoard() {
           fsPath={fsPath}
           isDoltOnly={isDoltOnly}
           readOnly={readOnly}
-          onOpenBead={openBead}
+          onOpenBead={openIdea}
           onChanged={refreshBeads}
         />
       </ErrorBoundary>
