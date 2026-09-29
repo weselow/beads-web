@@ -6,6 +6,7 @@ import { CheckCircle2, ChevronDown, ChevronRight, Layers, Loader2, MessageSquare
 
 import { CopyableText } from "@/components/copyable-text";
 import { DependencyBadge } from "@/components/dependency-badge";
+import { ParentLink } from "@/components/parent-link";
 import { SubtaskList, ChildPRStatus } from "@/components/subtask-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,11 @@ export interface EpicCardProps {
   readOnly?: boolean;
   /** The project's statuses, to tell which children are done; bd's built-in ones by default */
   statuses?: readonly StatusInfo[];
+  /** Parent that is not an epic (a milestone): the card shows "part of #N" */
+  parent?: Bead;
+  parentTicketNumber?: number;
+  /** Opens the parent from the "part of #N" mark */
+  onOpenParent?: (parent: Bead) => void;
 }
 
 /**
@@ -75,6 +81,9 @@ export function EpicCard({
   onUpdate,
   readOnly = false,
   statuses = BUILTIN_STATUSES,
+  parent,
+  parentTicketNumber,
+  onOpenParent,
 }: EpicCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -268,6 +277,11 @@ export function EpicCard({
     </Badge>
   );
 
+  // "part of #N" when the epic's parent is not an epic
+  const parentLink = parent && onOpenParent && (
+    <ParentLink parent={parent} ticketNumber={parentTicketNumber} onOpen={onOpenParent} />
+  );
+
   // ─── Layout: compact-row (Linear Minimal) ───
   if (layout === 'compact-row') {
     return (
@@ -288,6 +302,7 @@ export function EpicCard({
               <span className="text-[13px] font-semibold text-t-primary truncate">{epic.title}</span>
               <span className="text-[10px] font-semibold text-epic shrink-0">EPIC</span>
               {statusMark}
+              {parentLink}
             </div>
             {progressSection}
             {closeButton}
@@ -329,6 +344,7 @@ export function EpicCard({
               Epic
             </span>
             {statusMark}
+            {parentLink}
             <span className="theme-badge text-[10px] px-1.5 py-0.5 bg-surface-overlay text-t-tertiary">
               {progressPercentage}% · {children.length} tasks
             </span>
@@ -385,6 +401,8 @@ export function EpicCard({
         </div>
 
         <h3 className="font-bold text-base leading-tight text-t-primary">{truncate(epic.title, 60)}</h3>
+
+        {parentLink}
 
         {epic.description && (
           <p className="text-xs text-t-tertiary leading-relaxed">{truncate(epic.description, 100)}</p>

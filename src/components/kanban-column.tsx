@@ -92,6 +92,16 @@ type BeadListProps = Omit<KanbanColumnProps, "status" | "title" | "category" | "
 type ColumnCardProps = Omit<BeadListProps, "beads"> & { bead: Bead };
 
 /**
+ * The card's parent for the "part of #N" mark, when it is among the beads.
+ * Children of an epic never reach a column, so this parent is never an epic.
+ */
+function parentProps(bead: Bead, allBeads: Bead[], ticketNumbers?: Map<string, number>) {
+  const parent = bead.parent_id ? allBeads.find((b) => b.id === bead.parent_id) : undefined;
+  if (!parent) return {};
+  return { parent, parentTicketNumber: ticketNumbers?.get(parent.id) };
+}
+
+/**
  * One card of a column: EpicCard for an epic, BeadCard for the rest
  */
 function ColumnCard({ bead, ticketNumbers, selectedBeadId, onSelectBead, onChildClick, readOnly = false, ...rest }: ColumnCardProps) {
@@ -101,6 +111,8 @@ function ColumnCard({ bead, ticketNumbers, selectedBeadId, onSelectBead, onChild
     isSelected: selectedBeadId === bead.id,
     onSelect: onSelectBead,
     statuses: rest.statuses,
+    ...parentProps(bead, rest.allBeads, ticketNumbers),
+    onOpenParent: onSelectBead,
   };
   if (!isEpic(bead)) return <BeadCard bead={bead} {...common} />;
   return (

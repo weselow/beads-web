@@ -3,6 +3,7 @@
 import { FolderOpen, GitPullRequest, Link2, MessageSquare, Check, X, Clock } from "lucide-react";
 
 import { CopyableText } from "@/components/copyable-text";
+import { ParentLink } from "@/components/parent-link";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 import { formatBeadId, formatWorktreePath, isBlocked, truncate } from "@/lib/bead-utils";
@@ -24,6 +25,11 @@ export interface BeadCardProps {
   onSelect: (bead: Bead) => void;
   /** The project's statuses, to tell done beads and blockers; bd's built-in ones by default */
   statuses?: readonly StatusInfo[];
+  /** Parent that is not an epic: the card shows "part of #N" */
+  parent?: Bead;
+  parentTicketNumber?: number;
+  /** Opens the parent from the "part of #N" mark */
+  onOpenParent?: (parent: Bead) => void;
 }
 
 /**
@@ -138,6 +144,7 @@ function getTypeLabel(bead: Bead): string {
 
 export function BeadCard({
   bead, allBeads, ticketNumber, worktreeStatus, prStatus, isSelected = false, onSelect, statuses = BUILTIN_STATUSES,
+  parent, parentTicketNumber, onOpenParent,
 }: BeadCardProps) {
   const { layout } = useTheme();
   const blocked = isBlocked(bead, allBeads, statuses);
@@ -199,6 +206,11 @@ export function BeadCard({
     </div>
   );
 
+  // "part of #N" when the parent is not an epic
+  const parentLink = parent && onOpenParent && (
+    <ParentLink parent={parent} ticketNumber={parentTicketNumber} onOpen={onOpenParent} />
+  );
+
   // Inline PR badge for compact layouts
   const inlinePRBadge = hasPR && prStatus?.pr && prChecksDisplay && (
     <span className={cn("flex items-center gap-1 text-[10px] font-medium", prChecksDisplay.className)}>
@@ -238,6 +250,7 @@ export function BeadCard({
             <span className="text-[13px] font-medium text-t-primary truncate">
               {bead.title}
             </span>
+            {parentLink}
           </div>
           {(bead.description || inlinePRBadge) && (
             <div className="flex items-center gap-2 mt-0.5">
@@ -301,6 +314,7 @@ export function BeadCard({
           <span className="theme-badge text-[11px] font-mono px-1.5 py-0.5 bg-surface-overlay text-t-muted">
             {ticketNumber !== undefined && `#${ticketNumber} `}{formatBeadId(bead.id)}
           </span>
+          {parentLink}
           {blocked && (
             <span className="theme-badge text-[10px] font-semibold px-1.5 py-0.5 bg-danger/15 text-danger">
               Blocked
@@ -392,6 +406,8 @@ export function BeadCard({
           <div className="font-semibold text-sm leading-tight">
             {truncate(bead.title, 60)}
           </div>
+
+          {parentLink}
 
           {/* Description */}
           {bead.description && (
