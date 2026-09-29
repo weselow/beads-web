@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { Search, X, ArrowUpDown, SlidersHorizontal, BrainCircuit, Bot, AlertTriangle, Plus, Shapes, Lightbulb } from 'lucide-react';
+import { Search, X, ArrowUpDown, SlidersHorizontal, BrainCircuit, Bot, AlertTriangle, Plus, Shapes, Lightbulb, SquareKanban, ListTree } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +24,7 @@ import {
 import { formatStatus } from '@/lib/bead-utils';
 import { ISSUE_TYPES, getIssueTypeMeta } from '@/lib/issue-types';
 import type { IssueTypeFilter } from '@/lib/issue-types';
+import type { ProjectView } from '@/lib/project-view';
 import { READ_ONLY_BUTTON_CLASS, READ_ONLY_HINT } from '@/lib/read-only';
 import { cn } from '@/lib/utils';
 import type { StatusInfo } from '@/types';
@@ -33,6 +34,10 @@ type SortField = 'ticket_number' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
 interface QuickFilterBarProps {
+  /** The page's current view, board or tree */
+  view?: ProjectView;
+  /** Callback when the user picks a view; without it the switch is not shown */
+  onViewChange?: (view: ProjectView) => void;
   /** Issue type filter: all, epics, or tasks */
   typeFilter: TypeFilter;
   /** Callback when type filter changes */
@@ -102,11 +107,47 @@ const SORT_OPTIONS: { value: string; label: string; field: SortField; direction:
   { value: 'created_at_asc', label: 'Updated (Oldest)', field: 'created_at', direction: 'asc' },
 ];
 
+const VIEW_OPTIONS: { value: ProjectView; label: string; icon: typeof SquareKanban }[] = [
+  { value: 'board', label: 'Board view', icon: SquareKanban },
+  { value: 'tree', label: 'Tree view', icon: ListTree },
+];
+
+interface ViewSwitchProps {
+  view: ProjectView;
+  onViewChange: (view: ProjectView) => void;
+}
+
+/** Two icon buttons that pick how the page shows beads: board or tree */
+function ViewSwitch({ view, onViewChange }: ViewSwitchProps) {
+  return (
+    <div role="group" aria-label="View" className="flex items-center rounded-md bg-surface-overlay/50 p-0.5">
+      {VIEW_OPTIONS.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onViewChange(value)}
+          aria-pressed={view === value}
+          aria-label={label}
+          title={label}
+          className={cn(
+            'h-7 w-7 flex items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-raised',
+            view === value ? 'bg-surface-raised text-t-primary shadow-sm' : 'text-t-tertiary hover:text-t-secondary'
+          )}
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * QuickFilterBar provides quick access to common filter and sort operations
  * for the kanban board. Displays below the header as a horizontal bar.
  */
 export function QuickFilterBar({
+  view = 'board',
+  onViewChange,
   typeFilter,
   onTypeFilterChange,
   todayOnly,
@@ -157,6 +198,8 @@ export function QuickFilterBar({
       aria-label="Quick filters"
       className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-raised/80 backdrop-blur border border-b-default px-3 py-2"
     >
+      {onViewChange && <ViewSwitch view={view} onViewChange={onViewChange} />}
+
       {/* Search Input */}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-t-muted" aria-hidden="true" />
