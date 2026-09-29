@@ -7,7 +7,9 @@
  * Built with maps by id, so a project of thousands of beads stays fast.
  */
 
+import { filterBoardTypes } from "@/lib/ideas";
 import { getIssueTypeMeta } from "@/lib/issue-types";
+import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoneStatus } from "@/lib/statuses";
 import type { Bead, StatusInfo } from "@/types";
 
@@ -145,6 +147,58 @@ export function buildTree(beads: readonly Bead[], statuses: readonly StatusInfo[
     if (!ctx.visited.has(bead.id)) add(buildNode(ringEntry(bead, ctx), 0, false, ctx));
   }
   return roots.sort(rootOrder(options.compare));
+}
+
+interface TypeWalk {
+  isTyped: (bead: Bead) => boolean;
+  byId: ReadonlyMap<string, Bead>;
+  parentOf: ReadonlyMap<string, string>;
+  /** Answers found so far, by bead id. */
+  known: Map<string, boolean>;
+}
+
+/**
+ * Whether a bead is of the type or sits anywhere under a bead of it. Answers
+ * are kept in `walk.known`, so each bead is walked once across all calls. A
+ * ring of parents without the type ends the walk with "no".
+ */
+function underType(id: string, walk: TypeWalk): boolean {
+  const path: string[] = [];
+  const onPath = new Set<string>();
+  let current: string | undefined = id;
+  let answer = false;
+  while (current !== undefined && !onPath.has(current)) {
+    const cached = walk.known.get(current);
+    if (cached !== undefined) { answer = cached; break; }
+    const bead = walk.byId.get(current);
+    if (!bead) break;
+    path.push(current);
+    onPath.add(current);
+    if (walk.isTyped(bead)) { answer = true; break; }
+    current = walk.parentOf.get(current);
+  }
+  path.forEach((step) => walk.known.set(step, answer));
+  return answer;
+}
+
+/**
+ * The tree's type filter. With every type shown it is the board's rule (all
+ * but stories). With one type picked, a bead that passed the other filters is
+ * kept when it is of that type or has an ancestor of it, so a milestone comes
+ * with its whole branch. Stories stay in the Ideas panel unless Story is picked.
+ */
+export function matchTreeTypes(filtered: readonly Bead[], all: readonly Bead[], typeFilter: IssueTypeFilter): Set<string> {
+  if (typeFilter === "all") return new Set(filterBoardTypes(filtered, "all").map((b) => b.id));
+  const typeOf = (b: Bead) => getIssueTypeMeta(b.issue_type).value;
+  const byId = new Map(all.map((b) => [b.id, b]));
+  const walk: TypeWalk = {
+    isTyped: (b) => typeOf(b) === typeFilter,
+    byId,
+    parentOf: linkParents(all, byId),
+    known: new Map(),
+  };
+  const allowed = (b: Bead) => typeFilter === "story" || typeOf(b) !== "story";
+  return new Set(filtered.filter((b) => allowed(b) && underType(b.id, walk)).map((b) => b.id));
 }
 
 /** The rows on screen, depth first: a collapsed node shows, its subtree does not. */

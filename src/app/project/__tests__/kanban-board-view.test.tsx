@@ -9,7 +9,7 @@ import KanbanBoard from '../kanban-board';
 // card are real; the backend is replaced, and the address is a small store so
 // router.replace redraws the page the way Next.js does.
 
-const { BEAD, nav } = vi.hoisted(() => {
+const { BEAD, data, nav } = vi.hoisted(() => {
   const bead: Bead = {
     id: 'demo-1',
     title: 'Demo bead',
@@ -33,7 +33,9 @@ const { BEAD, nav } = vi.hoisted(() => {
       listeners.forEach((listener) => listener());
     },
   };
-  return { BEAD: bead, nav: store };
+  // The beads the page gets; a test swaps in its own list before render.
+  const data = { beads: [bead], ticketNumbers: new Map<string, number>([['demo-1', 1]]) };
+  return { BEAD: bead, data, nav: store };
 });
 
 const replace = vi.fn((url: string) => nav.replace(url));
@@ -56,11 +58,9 @@ vi.mock('@/hooks/use-project', () => ({
 }));
 
 vi.mock('@/hooks/use-beads', () => {
-  const beads = [BEAD];
-  const ticketNumbers = new Map<string, number>([['demo-1', 1]]);
   const refresh = vi.fn();
   return {
-    useBeads: () => ({ beads, ticketNumbers, isLoading: false, error: null, stale: null, refresh }),
+    useBeads: () => ({ beads: data.beads, ticketNumbers: data.ticketNumbers, isLoading: false, error: null, stale: null, refresh }),
   };
 });
 
@@ -127,6 +127,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   nav.search = 'id=p1';
+  data.beads = [BEAD];
+  data.ticketNumbers = new Map([['demo-1', 1]]);
   replace.mockClear();
   vi.stubGlobal('localStorage', memoryStorage());
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -243,5 +245,27 @@ describe('Board / Tree switch on the project page', () => {
 
     expect(within(tree()!).queryByRole('button', { name: 'Demo bead' })).not.toBeInTheDocument();
     expect(within(tree()!).getByText('No beads match the filters')).toBeInTheDocument();
+  });
+
+  it('the Milestone type filter shows each milestone with its whole branch', () => {
+    const child = (id: string, title: string, extra: Partial<Bead>) => ({ ...BEAD, id, title, ...extra });
+    data.beads = [
+      child('m-1', 'Release 1.0', { issue_type: 'milestone' }),
+      child('e-1', 'Payments epic', { issue_type: 'epic', parent_id: 'm-1' }),
+      child('t-1', 'Card form', { parent_id: 'e-1' }),
+      BEAD,
+    ];
+    data.ticketNumbers = new Map(data.beads.map((b, i) => [b.id, i + 1]));
+    nav.search = 'id=p1&view=tree';
+    render(<KanbanBoard />);
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Filter by issue type' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Milestone' }));
+
+    const view = within(tree()!);
+    for (const title of ['Release 1.0', 'Payments epic', 'Card form']) {
+      expect(view.getByRole('button', { name: title })).toBeInTheDocument();
+    }
+    expect(view.queryByRole('button', { name: 'Demo bead' })).not.toBeInTheDocument();
   });
 });
