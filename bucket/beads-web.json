@@ -1,11 +1,11 @@
 {
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Visual Kanban board and multi-project dashboard for beads task tracking",
   "homepage": "https://github.com/weselow/beads-web",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/weselow/beads-web/releases/download/v0.13.0/beads-web-win-x64.exe#/beads-web.exe",
-      "hash": "9f3a377582be69597e221a0ce12216f01fad5119673ccf859db0a988a3046506"
+      "url": "https://github.com/weselow/beads-web/releases/download/v0.14.0/beads-web-win-x64.exe#/beads-web.exe",
+      "hash": "b43f85da716b356f850f3f5388121cfe04b141a61480a74f2513a35ea8dc7175"
     }
   },
   "bin": "beads-web.exe",
