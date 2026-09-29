@@ -69,16 +69,36 @@ describe.each(LAYOUTS)('parent mark on a bead card, %s layout', (layout) => {
   it('opens the parent, not the card, on click', () => {
     const { onSelect, onOpenParent } = renderCard(7);
     fireEvent.click(screen.getByRole('button', { name: 'Open parent: Milestone one' }));
+    expect(onOpenParent).toHaveBeenCalledTimes(1);
     expect(onOpenParent).toHaveBeenCalledWith(milestone);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('does not open the card on Enter or Space pressed on the mark', () => {
-    const { onSelect } = renderCard(7);
+  // The mark opens the parent itself on the key and cancels the browser's
+  // default action, which would otherwise click the button a second time.
+  it.each(['Enter', ' '])('opens the parent once, not the card, on %j pressed on the mark', (key) => {
+    const { onSelect, onOpenParent } = renderCard(7);
     const mark = screen.getByRole('button', { name: 'Open parent: Milestone one' });
-    fireEvent.keyDown(mark, { key: 'Enter' });
-    fireEvent.keyDown(mark, { key: ' ' });
+    const notCancelled = fireEvent.keyDown(mark, { key });
+    expect(notCancelled).toBe(false);
+    expect(onOpenParent).toHaveBeenCalledTimes(1);
+    expect(onOpenParent).toHaveBeenCalledWith(milestone);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('cancels the key up of Space too, so the browser does not click the mark on release', () => {
+    const { onSelect, onOpenParent } = renderCard(7);
+    const mark = screen.getByRole('button', { name: 'Open parent: Milestone one' });
+    expect(fireEvent.keyUp(mark, { key: ' ' })).toBe(false);
+    expect(onOpenParent).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('leaves other keys alone', () => {
+    const { onOpenParent } = renderCard(7);
+    const mark = screen.getByRole('button', { name: 'Open parent: Milestone one' });
+    expect(fireEvent.keyDown(mark, { key: 'a' })).toBe(true);
+    expect(onOpenParent).not.toHaveBeenCalled();
   });
 
   it('shows no mark on a bead without a parent', () => {
