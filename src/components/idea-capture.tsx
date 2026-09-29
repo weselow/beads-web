@@ -32,6 +32,8 @@ export function IdeaCapture({ projectPath, readOnly, onCreated }: IdeaCapturePro
         <Input
           type="text"
           aria-label="New idea"
+          // Focused on mount, before the panel would put focus on its close button.
+          autoFocus
           placeholder="Write an idea and press Enter…"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
