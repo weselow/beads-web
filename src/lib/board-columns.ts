@@ -47,6 +47,22 @@ export function orderBoardStatuses(statuses: readonly StatusInfo[]): StatusInfo[
 }
 
 /**
+ * Beads that get a card of their own on the board. The children of an epic
+ * are left out: they show inside the epic's card. A child of any other
+ * parent (a milestone, a feature, a task) keeps its own card, and so does a
+ * child whose parent is not among allBeads (deleted, or in another project).
+ * Parents are looked up in allBeads, so a filter that hid the parent does not
+ * change where the child goes.
+ */
+export function selectBoardBeads(beads: readonly Bead[], allBeads: readonly Bead[]): Bead[] {
+  const byId = new Map(allBeads.map((b) => [b.id, b]));
+  return beads.filter((b) => {
+    if (!b.parent_id) return true;
+    return byId.get(b.parent_id)?.issue_type !== "epic";
+  });
+}
+
+/**
  * Splits beads into the board's columns, keeping the order they came in so
  * the sort chosen in the filter bar survives; pinned beads go first in open.
  */

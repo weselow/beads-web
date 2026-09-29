@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import { PackageOpen } from "lucide-react";
 
 import { BeadCard } from "@/components/bead-card";
@@ -89,18 +91,33 @@ function isEpic(bead: Bead): bead is Epic {
 
 type BeadListProps = Omit<KanbanColumnProps, "status" | "title" | "category" | "collapsed">;
 
-type ColumnCardProps = Omit<BeadListProps, "beads"> & { bead: Bead };
+/** All beads by id, built once per column so each card finds its parent without a scan */
+type ColumnCardProps = Omit<BeadListProps, "beads"> & { bead: Bead; beadsById: Map<string, Bead> };
+
+/**
+ * The card's parent for the "part of #N" mark, when it is among the beads.
+ * Children of an epic never reach a column, so this parent is never an epic.
+ */
+function parentProps(bead: Bead, beadsById: Map<string, Bead>, ticketNumbers?: Map<string, number>) {
+  const parent = bead.parent_id ? beadsById.get(bead.parent_id) : undefined;
+  if (!parent) return {};
+  return { parent, parentTicketNumber: ticketNumbers?.get(parent.id) };
+}
 
 /**
  * One card of a column: EpicCard for an epic, BeadCard for the rest
  */
-function ColumnCard({ bead, ticketNumbers, selectedBeadId, onSelectBead, onChildClick, readOnly = false, ...rest }: ColumnCardProps) {
+function ColumnCard({
+  bead, beadsById, ticketNumbers, selectedBeadId, onSelectBead, onChildClick, readOnly = false, ...rest
+}: ColumnCardProps) {
   const common = {
     allBeads: rest.allBeads,
     ticketNumber: ticketNumbers?.get(bead.id),
     isSelected: selectedBeadId === bead.id,
     onSelect: onSelectBead,
     statuses: rest.statuses,
+    ...parentProps(bead, beadsById, ticketNumbers),
+    onOpenParent: onSelectBead,
   };
   if (!isEpic(bead)) return <BeadCard bead={bead} {...common} />;
   return (
@@ -120,10 +137,12 @@ function ColumnCard({ bead, ticketNumbers, selectedBeadId, onSelectBead, onChild
  * Scrollable list of a column's cards, or a placeholder when it has none
  */
 function BeadList({ beads, ...cardProps }: BeadListProps) {
+  const { allBeads } = cardProps;
+  const beadsById = useMemo(() => new Map(allBeads.map((b) => [b.id, b])), [allBeads]);
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-3">
       <div className="space-y-3">
-        {beads.map((bead) => <ColumnCard key={bead.id} bead={bead} {...cardProps} />)}
+        {beads.map((bead) => <ColumnCard key={bead.id} bead={bead} beadsById={beadsById} {...cardProps} />)}
         {beads.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-b-strong/50 rounded-lg">
             <PackageOpen className="size-8 text-t-muted mb-2" aria-hidden="true" />

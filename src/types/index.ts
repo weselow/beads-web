@@ -104,7 +104,7 @@ export interface Bead {
   updated_at: string;
   comments: Comment[];
   // Epic support fields
-  parent_id?: string;         // ID of parent epic (for child tasks)
+  parent_id?: string;         // ID of the parent bead (an epic, a milestone, any other bead)
   children?: string[];        // IDs of child tasks (for epics)
   design?: string;            // Inline design notes (bd --design)
   notes?: string;             // Supplementary notes (bd --notes)

@@ -40,7 +40,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
 import { isBlocked } from "@/lib/bead-utils";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
-import { buildBoardColumns } from "@/lib/board-columns";
+import { buildBoardColumns, selectBoardBeads } from "@/lib/board-columns";
 import { filterBoardTypes, splitIdeas } from "@/lib/ideas";
 import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoneStatus } from "@/lib/statuses";
@@ -169,13 +169,14 @@ export default function KanbanBoard() {
   );
 
   /**
-   * Filter to only top-level beads (no parent_id), then apply the issue type
-   * filter. Stories stay off the board unless Story is picked: they live in
-   * the Ideas panel. Child tasks appear inside epic cards, not in columns.
+   * Beads with a card of their own, then the issue type filter. Children of
+   * an epic appear inside the epic card; children of any other parent get
+   * their own card. Stories stay off the board unless Story is picked: they
+   * live in the Ideas panel.
    */
   const topLevelBeads = useMemo(
-    () => filterBoardTypes(filteredBeads.filter(b => !b.parent_id), typeFilter),
-    [filteredBeads, typeFilter]
+    () => filterBoardTypes(selectBoardBeads(filteredBeads, beads), typeFilter),
+    [filteredBeads, beads, typeFilter]
   );
 
   // Open ideas for the counter on the Ideas button
