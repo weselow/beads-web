@@ -7,6 +7,7 @@ pub mod agents;
 pub mod beads;
 pub mod cli;
 pub mod close;
+pub mod comment;
 pub mod dolt;
 pub mod fs;
 pub mod git;

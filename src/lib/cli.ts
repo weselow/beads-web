@@ -42,28 +42,23 @@ async function executeBdCommand(
 /**
  * Add a comment to a bead
  *
- * Executes: bd comment <beadId> "<message>"
+ * Goes through POST /api/beads/comment, not a bd command, so it works for a
+ * dolt-only project too: the server runs `bd comment` in a project folder and
+ * writes over SQL for `dolt://db`.
  *
  * @param beadId - The ID of the bead to comment on
- * @param message - The comment message
- * @param cwd - Working directory (project path)
- * @throws Error if command fails
+ * @param message - The comment message, sent as is
+ * @param projectPath - Project folder or `dolt://db`
+ * @throws Error without a project path, or with the server's message if adding fails
  *
  * @example
  * ```typescript
  * await addComment('BD-001', 'Fixed the bug', '/path/to/project');
  * ```
  */
-export async function addComment(
-  beadId: string,
-  message: string,
-  cwd?: string
-): Promise<void> {
-  const result = await executeBdCommand(["comment", beadId, message], cwd);
-
-  if (!result.success) {
-    throw new Error(result.stderr || `Failed to add comment: exit code ${result.code}`);
-  }
+export async function addComment(beadId: string, message: string, projectPath?: string): Promise<void> {
+  if (!projectPath) throw new Error(`Cannot comment on ${beadId}: no project path`);
+  await api.beads.comment({ path: projectPath, id: beadId, text: message });
 }
 
 /**

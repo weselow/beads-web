@@ -178,6 +178,7 @@ async fn main() {
         .route("/api/beads/create", post(routes::beads::create_bead_handler))
         .route("/api/beads/update", patch(routes::beads::update_bead_handler))
         .route("/api/beads/close", post(routes::close::close_bead_handler))
+        .route("/api/beads/comment", post(routes::comment::add_comment_handler))
         .route("/api/statuses", get(routes::statuses::read_statuses))
         .route(
             "/api/projects/journal",

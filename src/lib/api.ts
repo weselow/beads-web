@@ -198,6 +198,16 @@ export const beads = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  /**
+   * Add a comment to a bead. `path` is a project folder (the server runs
+   * `bd comment`) or `dolt://db` (written over SQL). Blank text is refused.
+   */
+  comment: (data: { path: string; id: string; text: string }) =>
+    fetchApi<{ success: boolean }>('/api/beads/comment', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 /**

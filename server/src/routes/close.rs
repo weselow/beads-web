@@ -24,9 +24,9 @@ pub struct CloseBeadRequest {
 }
 
 /// Status code and JSON body sent back to the page.
-type Reply = (StatusCode, Json<serde_json::Value>);
+pub(super) type Reply = (StatusCode, Json<serde_json::Value>);
 
-fn error_reply(code: StatusCode, message: impl Into<String>) -> Reply {
+pub(super) fn error_reply(code: StatusCode, message: impl Into<String>) -> Reply {
     (code, Json(serde_json::json!({ "error": message.into() })))
 }
 
@@ -45,14 +45,22 @@ fn build_close_args(id: &str, reason: Option<&str>) -> Vec<String> {
     args
 }
 
-/// The page's answer for a failed SQL close.
-fn sql_error_reply(e: DoltError) -> Reply {
+/// The page's answer for a failed SQL write.
+pub(super) fn sql_error_reply(e: DoltError) -> Reply {
     let code = match e {
         DoltError::BeadNotFound(_) => StatusCode::NOT_FOUND,
         DoltError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
         DoltError::QueryFailed(_) | DoltError::DatabaseNotFound(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     error_reply(code, e.to_string())
+}
+
+/// 503 when the central Dolt server cannot be reached.
+pub(super) async fn ensure_dolt_running(dolt_manager: &DoltManager) -> Result<(), Reply> {
+    if dolt_manager.is_available() || dolt_manager.check_server().await {
+        return Ok(());
+    }
+    Err(error_reply(StatusCode::SERVICE_UNAVAILABLE, "Dolt server is not running"))
 }
 
 /// Closes a bead of a `dolt://` project over SQL.
@@ -62,9 +70,7 @@ async fn close_over_sql(
     id: &str,
     reason: Option<&str>,
 ) -> Result<(), Reply> {
-    if !dolt_manager.is_available() && !dolt_manager.check_server().await {
-        return Err(error_reply(StatusCode::SERVICE_UNAVAILABLE, "Dolt server is not running"));
-    }
+    ensure_dolt_running(dolt_manager).await?;
     dolt_manager
         .close_bead(db_name, id, dolt::sql_close_reason(reason))
         .await

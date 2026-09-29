@@ -263,6 +263,84 @@ impl DoltManager {
         info!("Closed bead {} in Dolt (db: {})", id, db_name);
         Ok(())
     }
+
+    /// Adds a comment by `web-ui` to a bead and commits the change. A bead
+    /// that does not exist is [`DoltError::BeadNotFound`].
+    pub async fn add_comment(&self, db_name: &str, issue_id: &str, text: &str) -> Result<(), DoltError> {
+        let mut conn = self.pool.get_conn().await
+            .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
+        if !issue_exists(&mut conn, db_name, issue_id).await? {
+            return Err(DoltError::BeadNotFound(issue_id.to_string()));
+        }
+
+        let id = comment_id_needs_value(comment_id_type(&mut conn, db_name).await?.as_deref())
+            .then(|| uuid::Uuid::new_v4().to_string());
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let comment = NewComment { id: id.as_deref(), issue_id, text, now: &now };
+        let (query, params) = comment_insert(db_name, &comment);
+        conn.exec_drop(&query, mysql_async::Params::Named(params.into_iter().collect()))
+            .await
+            .map_err(|e| DoltError::QueryFailed(format!("comment: {}", e)))?;
+
+        commit_change(&mut conn, db_name, &commit_statement("comment", issue_id)).await?;
+        info!("Added a comment to bead {} in Dolt (db: {})", issue_id, db_name);
+        Ok(())
+    }
+}
+
+/// One comment row to insert; `id` is `None` when the database makes it.
+struct NewComment<'a> {
+    id: Option<&'a str>,
+    issue_id: &'a str,
+    text: &'a str,
+    /// `YYYY-MM-DD HH:MM:SS`, UTC
+    now: &'a str,
+}
+
+/// The `INSERT` of one comment and its named parameters; the author is
+/// `web-ui`, as for beads created from the page.
+fn comment_insert(db_name: &str, comment: &NewComment<'_>) -> (String, NamedParams) {
+    let mut columns = vec!["issue_id", "author", "text", "created_at"];
+    let mut values = vec![":issue_id", "'web-ui'", ":text", ":now"];
+    let mut params: NamedParams = vec![
+        (b"issue_id".to_vec(), comment.issue_id.into()),
+        (b"text".to_vec(), comment.text.into()),
+        (b"now".to_vec(), comment.now.into()),
+    ];
+    if let Some(id) = comment.id {
+        columns.push("id");
+        values.push(":comment_id");
+        params.push((b"comment_id".to_vec(), id.into()));
+    }
+    (format_insert(db_name, "comments", &columns, &values), params)
+}
+
+/// bd 1.3.0 keys comments on a CHAR(36) with no default, so the id has to be
+/// sent; a pre-1.0 BIGINT id is made by the database.
+fn comment_id_needs_value(data_type: Option<&str>) -> bool {
+    data_type.is_some_and(|t| t.eq_ignore_ascii_case("char") || t.eq_ignore_ascii_case("varchar"))
+}
+
+/// Type of `comments.id` in the live schema, `None` when there is no such column.
+async fn comment_id_type(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Option<String>, DoltError> {
+    conn.exec_first(
+        "SELECT DATA_TYPE FROM information_schema.COLUMNS \
+         WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'comments' AND COLUMN_NAME = 'id'",
+        mysql_async::params! { "db" => db_name },
+    ).await.map_err(|e| DoltError::QueryFailed(format!("comments schema: {}", e)))
+}
+
+/// Counts the issues with a given id; the id is the `:id` parameter.
+fn issue_exists_query(db_name: &str) -> String {
+    format!("SELECT COUNT(*) FROM {}.issues WHERE id = :id", quoted_db(db_name))
+}
+
+async fn issue_exists(conn: &mut mysql_async::Conn, db_name: &str, id: &str) -> Result<bool, DoltError> {
+    let count: Option<u64> = conn
+        .exec_first(issue_exists_query(db_name), mysql_async::params! { "id" => id })
+        .await
+        .map_err(|e| DoltError::QueryFailed(format!("issue lookup: {}", e)))?;
+    Ok(count.unwrap_or(0) > 0)
 }
 
 /// The database name as it goes into SQL text: in backticks, with backticks
@@ -607,7 +685,7 @@ fn comments_query(db_name: &str) -> String {
     format!(
         "SELECT id, issue_id, author, text, \
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
-         FROM {}.comments ORDER BY issue_id, id",
+         FROM {}.comments ORDER BY issue_id, created_at, id",
         quoted_db(db_name)
     )
 }
@@ -1093,11 +1171,84 @@ mod tests {
             build_dependency_insert("a`b", &schema),
             close_statement("a`b", "x-1", "r", "2026-09-29 10:00:00").0,
             status_custom_query("a`b"),
+            issue_exists_query("a`b"),
+            comment_insert("a`b", &new_comment(None)).0,
+            comment_insert("a`b", &new_comment(Some("c-1"))).0,
         ];
         for query in built {
             assert!(query.contains("`a``b`."), "name not quoted in {}", query);
         }
         assert_eq!(use_statement("a`b"), "USE `a``b`");
+    }
+
+    // ── add_comment statement builders ──────────────────────────────────
+
+    fn new_comment(id: Option<&str>) -> NewComment<'_> {
+        NewComment {
+            id,
+            issue_id: "x-1",
+            text: "-looks like a flag'; DROP TABLE comments; --",
+            now: "2026-09-29 10:00:00",
+        }
+    }
+
+    fn param<'a>(params: &'a NamedParams, name: &str) -> Option<&'a mysql_async::Value> {
+        params.iter().find(|(n, _)| n == name.as_bytes()).map(|(_, v)| v)
+    }
+
+    #[test]
+    fn test_comment_insert_keeps_every_value_out_of_the_text() {
+        let (query, params) = comment_insert("beads_demo", &new_comment(Some("c-1")));
+        assert_eq!(
+            query,
+            "INSERT INTO `beads_demo`.comments (`issue_id`, `author`, `text`, `created_at`, `id`) \
+             VALUES (:issue_id, 'web-ui', :text, :now, :comment_id)"
+        );
+        assert!(!query.contains("DROP"));
+        assert_eq!(param(&params, "issue_id"), Some(&"x-1".into()));
+        assert_eq!(param(&params, "text"), Some(&"-looks like a flag'; DROP TABLE comments; --".into()));
+        assert_eq!(param(&params, "now"), Some(&"2026-09-29 10:00:00".into()));
+        assert_eq!(param(&params, "comment_id"), Some(&"c-1".into()));
+    }
+
+    #[test]
+    fn test_comment_insert_without_an_id_leaves_it_to_the_database() {
+        // A pre-1.0 schema keys comments on an auto-increment BIGINT.
+        let (query, params) = comment_insert("beads_demo", &new_comment(None));
+        assert!(!query.contains("`id`"));
+        assert!(!query.contains(":comment_id"));
+        assert_eq!(param(&params, "comment_id"), None);
+    }
+
+    #[test]
+    fn test_comment_id_needs_a_value_only_for_text_ids() {
+        // bd 1.3.0: CHAR(36) with no default; bd 1.0.x: CHAR(36) DEFAULT (UUID()).
+        assert!(comment_id_needs_value(Some("char")));
+        assert!(comment_id_needs_value(Some("VARCHAR")));
+        assert!(!comment_id_needs_value(Some("bigint")));
+        assert!(!comment_id_needs_value(None));
+    }
+
+    #[test]
+    fn test_issue_exists_query_takes_the_id_as_a_parameter() {
+        assert_eq!(
+            issue_exists_query("beads_demo"),
+            "SELECT COUNT(*) FROM `beads_demo`.issues WHERE id = :id"
+        );
+    }
+
+    #[test]
+    fn test_comments_are_read_oldest_first() {
+        // Comment ids are UUIDs, so ordering by id alone scatters them.
+        assert!(comments_query("beads_demo").ends_with("ORDER BY issue_id, created_at, id"));
+    }
+
+    #[test]
+    fn test_comment_commit_message_names_the_bead() {
+        assert_eq!(
+            commit_statement("comment", "x-1"),
+            "CALL DOLT_COMMIT('-Am', 'web-ui: comment x-1')"
+        );
     }
 
     // ── create_bead statement builders ──────────────────────────────────
