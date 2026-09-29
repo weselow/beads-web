@@ -12,6 +12,7 @@ import { BeadDetail } from "@/components/bead-detail";
 import { CommentList } from "@/components/comment-list";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { JournalSwitch } from "@/components/journal-switch";
 import { KanbanColumn } from "@/components/kanban-column";
 import { MemoryPanel } from "@/components/memory-panel";
 import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
@@ -68,8 +69,14 @@ export default function KanbanBoard() {
     isLoading: beadsLoading,
     error: beadsError,
     stale,
+    source: beadsSource,
     refresh: refreshBeads,
   } = useBeads(project?.path ?? "");
+
+  // After the journal is switched, re-read everything so the new source shows.
+  const refreshAfterJournalSwitch = useCallback(() => {
+    void refreshBeads({ full: true });
+  }, [refreshBeads]);
 
   // The project's statuses: bd's built-in ones plus its own
   const { statuses, isLoading: statusesLoading } = useStatuses(project?.path ?? "");
@@ -270,28 +277,41 @@ export default function KanbanBoard() {
     <div className="min-h-dvh bg-surface-base flex flex-col">
       {/* Header — terminal variant for neo-brutalist, standard otherwise */}
       {theme.headerVariant === 'terminal' ? (
-        <div className="flex items-center justify-between px-6 py-4 terminal-header">
-          <h1 className="font-mono text-xl font-bold tracking-wide">
-            <a href="/" className="hover:opacity-80">&gt;</a>{' '}
-            <span className="uppercase">{project.name}_</span>
-          </h1>
-          <span className="font-mono text-xs text-t-muted uppercase tracking-widest">
+        <div className="flex items-center justify-between gap-4 px-6 py-4 terminal-header">
+          <div className="flex min-w-0 items-center gap-3">
+            <h1 className="min-w-0 font-mono text-xl font-bold tracking-wide truncate">
+              <a href="/" className="hover:opacity-80">&gt;</a>{' '}
+              <span className="uppercase">{project.name}_</span>
+            </h1>
+            <JournalSwitch
+              projectPath={project.path}
+              source={beadsSource}
+              onChanged={refreshAfterJournalSwitch}
+              className="font-mono uppercase"
+            />
+          </div>
+          <span className="shrink-0 font-mono text-xs text-t-muted uppercase tracking-widest">
             {beads.length} beads // {beads.filter(b => b.issue_type === 'epic').length} epics // {beads.filter(b => isBlocked(b, beads, statuses)).length} blocked
           </span>
         </div>
       ) : (
         <div className="flex items-center gap-2 px-4 py-2">
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="ghost" size="icon" className="shrink-0" asChild>
             <a href="/">
               <ArrowLeft className="h-4 w-4" />
               <span className="sr-only">Back to projects</span>
             </a>
           </Button>
-          <h1 className="text-lg font-semibold truncate">{project.name}</h1>
+          <h1 className="min-w-0 text-lg font-semibold truncate">{project.name}</h1>
+          <JournalSwitch
+            projectPath={project.path}
+            source={beadsSource}
+            onChanged={refreshAfterJournalSwitch}
+          />
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label="Project settings"
             onClick={() => setIsSettingsOpen(true)}
           >
