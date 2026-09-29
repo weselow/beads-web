@@ -4,6 +4,7 @@ import { FolderOpen, GitPullRequest, Link2, MessageSquare, Check, X, Clock } fro
 
 import { CopyableText } from "@/components/copyable-text";
 import { ParentLink } from "@/components/parent-link";
+import { PriorityBadge } from "@/components/priority-badge";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 import { formatBeadId, formatWorktreePath, isBlocked, truncate } from "@/lib/bead-utils";
@@ -324,16 +325,7 @@ export function BeadCard({
             <TypeIcon className={cn("size-3 shrink-0", typeMeta.colorClass)} aria-hidden="true" />
             {getTypeLabel(bead)}
           </span>
-          {bead.priority !== undefined && bead.priority <= 2 && (
-            <span className={cn(
-              "theme-badge text-[10px] font-medium px-1.5 py-0.5",
-              bead.priority === 0 ? "bg-danger/15 text-danger" :
-              bead.priority === 1 ? "bg-blocked-accent/15 text-blocked-accent" :
-              "bg-surface-overlay text-t-muted"
-            )}>
-              P{bead.priority}
-            </span>
-          )}
+          <PriorityBadge priority={bead.priority} />
           {inlinePRBadge}
           {commentCount > 0 && (
             <span className="text-[10px] text-t-faint px-1">

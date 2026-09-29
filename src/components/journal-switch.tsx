@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import {
   Tooltip,
   TooltipContent,
@@ -102,29 +103,13 @@ export function JournalSwitch({ projectPath, source, onChanged, className }: Jou
       <Tooltip>
         <TooltipTrigger asChild>
           <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs text-t-muted", className)}>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={on}
+            <ToggleSwitch
+              checked={on}
+              onCheckedChange={(next) => void toggle(next)}
               aria-label="Events journal"
               aria-describedby={hintId}
               disabled={disabled}
-              onClick={() => void toggle(!on)}
-              className={cn(
-                "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border border-b-strong transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-t-tertiary",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-                on ? "bg-t-primary" : "bg-surface-overlay",
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "inline-block h-3 w-3 rounded-full bg-surface-base shadow transition-transform",
-                  on ? "translate-x-3" : "translate-x-0.5",
-                )}
-              />
-            </button>
+            />
             <span aria-hidden="true">Journal</span>
           </span>
         </TooltipTrigger>
