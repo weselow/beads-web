@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBoardColumns, columnTitle, orderBoardStatuses } from '@/lib/board-columns';
+import { buildBoardColumns, columnTitle, orderBoardStatuses, selectBoardBeads } from '@/lib/board-columns';
 import { BUILTIN_STATUSES } from '@/lib/statuses';
 import type { Bead, StatusInfo } from '@/types';
 
@@ -90,5 +90,47 @@ describe('buildBoardColumns', () => {
   it('keeps the order it was given, so the sort chosen in the filter bar survives', () => {
     const columns = buildBoardColumns([bead('1', 'open'), bead('2', 'mystery'), bead('3', 'open')], BUILTIN_STATUSES);
     expect(ids(column(columns, 'open').beads)).toEqual(['1', '2', '3']);
+  });
+});
+
+describe('selectBoardBeads', () => {
+  const typed = (id: string, issue_type: string, parent_id?: string): Bead =>
+    ({ ...bead(id, 'open'), issue_type, parent_id });
+
+  const epic = typed('e', 'epic');
+  const milestone = typed('m', 'milestone');
+  const feature = typed('f', 'feature');
+  const task = typed('t', 'task');
+  const all = [
+    epic, milestone, feature, task,
+    typed('e.1', 'task', 'e'),
+    typed('m.1', 'epic', 'm'),
+    typed('f.1', 'task', 'f'),
+    typed('t.1', 'bug', 't'),
+    typed('x.1', 'task', 'gone'),
+  ];
+
+  it('keeps beads without a parent', () => {
+    expect(ids(selectBoardBeads([epic, task], all))).toEqual(['e', 't']);
+  });
+
+  it('leaves the children of an epic out: they show inside the epic card', () => {
+    expect(ids(selectBoardBeads(all, all))).not.toContain('e.1');
+  });
+
+  it('keeps the children of a parent that is not an epic', () => {
+    expect(ids(selectBoardBeads(all, all))).toEqual(expect.arrayContaining(['m.1', 'f.1', 't.1']));
+  });
+
+  it('keeps a child whose parent is not among the beads', () => {
+    expect(ids(selectBoardBeads(all, all))).toContain('x.1');
+  });
+
+  it('keeps the order it was given', () => {
+    expect(ids(selectBoardBeads(all, all))).toEqual(['e', 'm', 'f', 't', 'm.1', 'f.1', 't.1', 'x.1']);
+  });
+
+  it('looks parents up in all beads, not only in those that passed the filters', () => {
+    expect(ids(selectBoardBeads([typed('e.1', 'task', 'e'), typed('f.1', 'task', 'f')], all))).toEqual(['f.1']);
   });
 });
