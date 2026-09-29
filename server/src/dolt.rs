@@ -215,40 +215,13 @@ impl DoltManager {
     }
 
     /// Updates a bead's fields in a Dolt database and commits the change.
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_bead(
         &self,
         db_name: &str,
         id: &str,
-        title: Option<&str>,
-        description: Option<&str>,
-        status: Option<&str>,
-        issue_type: Option<&str>,
-        priority: Option<i32>,
+        update: &BeadUpdate<'_>,
     ) -> Result<(), DoltError> {
-        let mut sets = Vec::new();
-        let mut params: Vec<(Vec<u8>, mysql_async::Value)> = Vec::new();
-
-        if let Some(t) = title {
-            sets.push("title = :title".to_string());
-            params.push((b"title".to_vec(), t.into()));
-        }
-        if let Some(d) = description {
-            sets.push("description = :desc".to_string());
-            params.push((b"desc".to_vec(), d.into()));
-        }
-        if let Some(s) = status {
-            sets.push("status = :status".to_string());
-            params.push((b"status".to_vec(), s.into()));
-        }
-        if let Some(t) = issue_type {
-            sets.push("issue_type = :issue_type".to_string());
-            params.push((b"issue_type".to_vec(), t.into()));
-        }
-        if let Some(p) = priority {
-            sets.push("priority = :priority".to_string());
-            params.push((b"priority".to_vec(), p.into()));
-        }
+        let (mut sets, mut params) = update_sets(update);
 
         if sets.is_empty() {
             return Ok(());
@@ -285,6 +258,81 @@ impl DoltManager {
         Ok(())
     }
 
+}
+
+/// Fields to change on one bead over SQL; `None` leaves a field alone.
+#[derive(Debug, Default)]
+pub struct BeadUpdate<'a> {
+    pub title: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub issue_type: Option<&'a str>,
+    pub priority: Option<i32>,
+    /// `Some(Some(t))` defers until `t` (`YYYY-MM-DD HH:MM:SS`, UTC),
+    /// `Some(None)` clears the date.
+    pub defer_until: Option<Option<String>>,
+}
+
+type NamedParams = Vec<(Vec<u8>, mysql_async::Value)>;
+
+/// `SET` clauses and their named parameters for [`BeadUpdate`].
+fn update_sets(update: &BeadUpdate<'_>) -> (Vec<String>, NamedParams) {
+    let mut sets = Vec::new();
+    let mut params: NamedParams = Vec::new();
+    let fields: [(&str, &str, Option<mysql_async::Value>); 5] = [
+        ("title", "title", update.title.map(Into::into)),
+        ("description", "desc", update.description.map(Into::into)),
+        ("status", "status", update.status.map(Into::into)),
+        ("issue_type", "issue_type", update.issue_type.map(Into::into)),
+        ("priority", "priority", update.priority.map(Into::into)),
+    ];
+    for (column, name, value) in fields {
+        if let Some(value) = value {
+            sets.push(format!("{} = :{}", column, name));
+            params.push((name.as_bytes().to_vec(), value));
+        }
+    }
+    push_defer_sets(update, &mut sets, &mut params);
+    (sets, params)
+}
+
+/// Adds the defer date the way `bd update --defer` does it: setting a date
+/// moves the bead to `deferred`, clearing it reopens a deferred bead. An
+/// explicit status in the same update wins.
+fn push_defer_sets(update: &BeadUpdate<'_>, sets: &mut Vec<String>, params: &mut NamedParams) {
+    let Some(defer) = &update.defer_until else { return };
+    match defer {
+        Some(until) => {
+            sets.push("defer_until = :defer_until".to_string());
+            params.push((b"defer_until".to_vec(), until.as_str().into()));
+        }
+        None => sets.push("defer_until = NULL".to_string()),
+    }
+    if update.status.is_none() {
+        let status = match defer {
+            Some(_) => "status = 'deferred'",
+            None => "status = CASE WHEN status = 'deferred' THEN 'open' ELSE status END",
+        };
+        sets.push(status.to_string());
+    }
+}
+
+/// Turns the page's defer value into what the `defer_until` column takes:
+/// empty clears it, `YYYY-MM-DD` means midnight UTC, RFC 3339 is converted
+/// to UTC. Words bd understands (`tomorrow`, `+1w`) are refused — SQL has
+/// no parser for them.
+pub fn sql_defer_value(value: &str) -> Result<Option<String>, String> {
+    const SQL_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        return Ok(Some(date.and_time(chrono::NaiveTime::MIN).format(SQL_FORMAT).to_string()));
+    }
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|t| Some(t.with_timezone(&chrono::Utc).format(SQL_FORMAT).to_string()))
+        .map_err(|_| format!("Defer date must be YYYY-MM-DD or RFC 3339, got '{}'", value))
 }
 
 /// Builds a small connection pool to a per-project Dolt server.
@@ -434,19 +482,48 @@ fn get_str(row: &Row, col: &str) -> String {
     get_opt_str(row, col).unwrap_or_default()
 }
 
-/// Queries issues from a Dolt database.
-async fn query_issues(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Vec<Bead>, DoltError> {
-    let query = format!(
+/// Whether the `issues` table has a column. Older bd schemas lack some
+/// (`defer_until`); a failed check counts as "no" so the read goes on.
+async fn issues_has_column(conn: &mut mysql_async::Conn, db_name: &str, column: &str) -> bool {
+    let found = conn.exec_first::<String, _, _>(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
+         WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'issues' AND COLUMN_NAME = :col",
+        mysql_async::params! { "db" => db_name, "col" => column },
+    ).await;
+    match found {
+        Ok(found) => found.is_some(),
+        Err(e) => {
+            warn!("Column check for issues.{} failed (db: {}): {}", column, db_name, e);
+            false
+        }
+    }
+}
+
+/// The `SELECT` for [`query_issues`]; without a `defer_until` column the
+/// field comes back as NULL instead of failing the whole read.
+fn issues_query(db_name: &str, has_defer_until: bool) -> String {
+    let defer_until = if has_defer_until {
+        "DATE_FORMAT(defer_until, '%Y-%m-%dT%H:%i:%sZ') AS defer_until"
+    } else {
+        "NULL AS defer_until"
+    };
+    format!(
         "SELECT id, title, description, `design`, notes, status, priority, issue_type, \
          owner, assignee, \
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at, \
          created_by, \
          DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%sZ') AS updated_at, \
          DATE_FORMAT(closed_at, '%Y-%m-%dT%H:%i:%sZ') AS closed_at, \
-         close_reason \
+         close_reason, {} \
          FROM `{}`.issues",
-        db_name
-    );
+        defer_until, db_name
+    )
+}
+
+/// Queries issues from a Dolt database.
+async fn query_issues(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Vec<Bead>, DoltError> {
+    let has_defer_until = issues_has_column(conn, db_name, "defer_until").await;
+    let query = issues_query(db_name, has_defer_until);
     let rows: Vec<Row> = conn.query(&query).await
         .map_err(|e| DoltError::QueryFailed(format!("issues: {}", e)))?;
 
@@ -463,6 +540,7 @@ async fn query_issues(conn: &mut mysql_async::Conn, db_name: &str) -> Result<Vec
         updated_at: get_opt_str(row, "updated_at"),
         closed_at: get_opt_str(row, "closed_at"),
         close_reason: get_opt_str(row, "close_reason"),
+        defer_until: get_opt_str(row, "defer_until"),
         design: get_opt_str(row, "design"),
         notes: get_opt_str(row, "notes"),
         parent_id: None, children: None, deps: None,
@@ -954,5 +1032,86 @@ mod tests {
 
         assert!(query.contains("`id`"));
         assert!(query.contains(":dep_id"));
+    }
+
+    // ── defer date: reading ─────────────────────────────────────────────
+
+    #[test]
+    fn test_issues_query_reads_defer_until_when_the_column_exists() {
+        let query = issues_query("beads_demo", true);
+        assert!(query.contains("DATE_FORMAT(defer_until, '%Y-%m-%dT%H:%i:%sZ') AS defer_until"));
+        assert!(query.contains("FROM `beads_demo`.issues"));
+    }
+
+    #[test]
+    fn test_issues_query_without_the_column_selects_null() {
+        // Old schemas have no defer_until: selecting it would fail the whole read.
+        let query = issues_query("beads_demo", false);
+        assert!(query.contains("NULL AS defer_until"));
+        assert!(!query.contains("DATE_FORMAT(defer_until"));
+    }
+
+    // ── defer date: writing ─────────────────────────────────────────────
+
+    #[test]
+    fn test_sql_defer_value_empty_clears() {
+        assert_eq!(sql_defer_value("  "), Ok(None));
+    }
+
+    #[test]
+    fn test_sql_defer_value_accepts_a_date() {
+        assert_eq!(sql_defer_value("2026-10-10"), Ok(Some("2026-10-10 00:00:00".to_string())));
+    }
+
+    #[test]
+    fn test_sql_defer_value_accepts_rfc3339_in_utc() {
+        assert_eq!(
+            sql_defer_value("2026-10-10T00:00:00+04:00"),
+            Ok(Some("2026-10-09 20:00:00".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_sql_defer_value_rejects_words() {
+        // bd understands "+1w" or "tomorrow"; SQL does not, so say so up front.
+        assert!(sql_defer_value("tomorrow").is_err());
+    }
+
+    fn set_clauses(update: &BeadUpdate<'_>) -> Vec<String> {
+        update_sets(update).0
+    }
+
+    #[test]
+    fn test_update_sets_defer_moves_the_bead_to_deferred() {
+        let update = BeadUpdate { defer_until: Some(Some("2026-10-10 00:00:00".into())), ..Default::default() };
+        let sets = set_clauses(&update);
+        assert!(sets.contains(&"defer_until = :defer_until".to_string()));
+        assert!(sets.contains(&"status = 'deferred'".to_string()));
+    }
+
+    #[test]
+    fn test_update_sets_clearing_defer_reopens_a_deferred_bead() {
+        let update = BeadUpdate { defer_until: Some(None), ..Default::default() };
+        let sets = set_clauses(&update);
+        assert!(sets.contains(&"defer_until = NULL".to_string()));
+        assert!(sets.contains(&"status = CASE WHEN status = 'deferred' THEN 'open' ELSE status END".to_string()));
+    }
+
+    #[test]
+    fn test_update_sets_explicit_status_wins_over_defer() {
+        let update = BeadUpdate {
+            status: Some("open"),
+            issue_type: Some("epic"),
+            defer_until: Some(None),
+            ..Default::default()
+        };
+        let sets = set_clauses(&update);
+        assert_eq!(sets, vec!["status = :status", "issue_type = :issue_type", "defer_until = NULL"]);
+    }
+
+    #[test]
+    fn test_update_sets_without_defer_do_not_touch_it() {
+        let update = BeadUpdate { title: Some("T"), ..Default::default() };
+        assert_eq!(set_clauses(&update), vec!["title = :title"]);
     }
 }

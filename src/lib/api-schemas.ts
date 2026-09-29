@@ -34,6 +34,7 @@ export const BeadSchema = z.object({
   close_reason: z.string().nullish(),
   closed_at: z.string().nullish(),
   created_by: z.string().nullish(),
+  defer_until: z.string().nullish(),
 });
 
 export const BeadsResponseSchema = z.object({

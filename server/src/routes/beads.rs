@@ -165,6 +165,10 @@ pub struct Bead {
     pub closed_at: Option<String>,
     #[serde(default)]
     pub close_reason: Option<String>,
+    /// When a deferred bead comes back (`bd update --defer`); bd reports it
+    /// as RFC 3339 in UTC and keeps the status `deferred` until then.
+    #[serde(default, alias = "deferUntil")]
+    pub defer_until: Option<String>,
     #[serde(default)]
     pub comments: Option<Vec<Comment>>,
     #[serde(default, alias = "parent")]
@@ -310,10 +314,21 @@ fn extract_json_array(output: &str) -> Result<&str, String> {
     }
 }
 
+/// Whether a bead is an idea (issue type `story`). Ideas live in their own
+/// panel, so the home page counts leave them out.
+fn is_story(bead: &Bead) -> bool {
+    bead.issue_type.as_deref() == Some("story")
+}
+
+/// Statuses of the beads the home page counts — every bead but the ideas.
+fn counted_statuses(beads: &[Bead]) -> Vec<&str> {
+    beads.iter().filter(|b| !is_story(b)).map(|b| b.status.as_str()).collect()
+}
+
 /// Counts by the four exact status names 0.13 knew, for the old columns.
 fn legacy_counts(beads: &[Bead]) -> LegacyCounts {
     let mut counts = LegacyCounts::default();
-    for bead in beads {
+    for bead in beads.iter().filter(|b| !is_story(b)) {
         match bead.status.as_str() {
             "open" => counts.open += 1,
             "in_progress" => counts.in_progress += 1,
@@ -333,14 +348,15 @@ fn counts_are_complete(source: &str, updated_after: Option<&str>) -> bool {
 }
 
 /// Counts a complete bead list by status group — the one count both the
-/// `/api/beads` response and the home-page cache use.
+/// `/api/beads` response and the home-page cache use. Ideas (stories) are
+/// left out.
 async fn group_counts(
     dolt_manager: &DoltManager,
     status_cache: &StatusCache,
     path: &str,
     beads: &[Bead],
 ) -> GroupCounts {
-    let names: Vec<&str> = beads.iter().map(|b| b.status.as_str()).collect();
+    let names = counted_statuses(beads);
     statuses::group_counts_for(dolt_manager, status_cache, path, &names).await
 }
 
@@ -999,6 +1015,53 @@ pub struct UpdateBeadRequest {
     pub issue_type: Option<String>,
     /// New priority 0-4 (optional)
     pub priority: Option<i32>,
+    /// Defer date (optional): a date like `2026-10-10` sets it, an empty
+    /// string clears it. bd moves the bead to `deferred` and back to `open`.
+    pub defer: Option<String>,
+}
+
+/// Whether the request asks to change anything at all.
+fn req_has_changes(req: &UpdateBeadRequest) -> bool {
+    req.title.is_some()
+        || req.description.is_some()
+        || req.status.is_some()
+        || req.issue_type.is_some()
+        || req.priority.is_some()
+        || req.defer.is_some()
+}
+
+/// Arguments for `bd update`, one flag per argument with its value glued on
+/// (`--title=…`), so a value starting with `-` is never read as a flag.
+fn build_update_args(req: &UpdateBeadRequest) -> Vec<String> {
+    let mut args = vec!["update".to_string(), req.id.clone()];
+    let flags = [
+        ("--title", req.title.clone()),
+        ("-d", req.description.clone()),
+        ("--status", req.status.clone()),
+        ("--type", req.issue_type.clone()),
+        ("--priority", req.priority.map(|p| p.to_string())),
+        ("--defer", req.defer.as_deref().map(|d| d.trim().to_string())),
+    ];
+    for (flag, value) in flags {
+        if let Some(value) = value {
+            args.push(format!("{}={}", flag, value));
+        }
+    }
+    args
+}
+
+/// Turns the request into a SQL update for a `dolt://` project, or a
+/// message for the page when the defer date is not one SQL can store.
+fn sql_update(req: &UpdateBeadRequest) -> Result<dolt::BeadUpdate<'_>, String> {
+    let defer_until = req.defer.as_deref().map(dolt::sql_defer_value).transpose()?;
+    Ok(dolt::BeadUpdate {
+        title: req.title.as_deref(),
+        description: req.description.as_deref(),
+        status: req.status.as_deref(),
+        issue_type: req.issue_type.as_deref(),
+        priority: req.priority,
+        defer_until,
+    })
 }
 
 /// PATCH /api/beads/update
@@ -1016,12 +1079,7 @@ pub async fn update_bead_handler(
         );
     }
 
-    let has_changes = req.title.is_some()
-        || req.description.is_some()
-        || req.status.is_some()
-        || req.issue_type.is_some()
-        || req.priority.is_some();
-    if !has_changes {
+    if !req_has_changes(&req) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "No fields to update" })),
@@ -1046,15 +1104,14 @@ pub async fn update_bead_handler(
             );
         }
 
-        match dolt_manager.update_bead(
-            db_name,
-            &req.id,
-            req.title.as_deref(),
-            req.description.as_deref(),
-            req.status.as_deref(),
-            req.issue_type.as_deref(),
-            req.priority,
-        ).await {
+        let update = match sql_update(&req) {
+            Ok(update) => update,
+            Err(e) => {
+                tracing::warn!(bead = %req.id, error = %e, "update refused: defer date not usable over SQL");
+                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e })));
+            }
+        };
+        match dolt_manager.update_bead(db_name, &req.id, &update).await {
             Ok(()) => {
                 return (StatusCode::OK, Json(serde_json::json!({ "success": true })));
             }
@@ -1073,22 +1130,9 @@ pub async fn update_bead_handler(
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": e })));
     }
 
-    // Build bd update args
-    let mut args = vec!["update".to_string(), req.id.clone()];
-    if let Some(ref t) = req.title {
-        args.push(format!("--title={}", t));
-    }
-    if let Some(ref d) = req.description {
-        args.push(format!("-d={}", d));
-    }
-    if let Some(ref s) = req.status {
-        args.push(format!("--status={}", s));
-    }
-    if let Some(ref t) = req.issue_type {
-        args.push(format!("--type={}", t));
-    }
-    if let Some(p) = req.priority {
-        args.push(format!("--priority={}", p));
+    let args = build_update_args(&req);
+    if let Some(defer) = &req.defer {
+        tracing::info!(bead = %req.id, defer = %defer.trim(), "bd update with defer date");
     }
 
     let result = tokio::time::timeout(
@@ -1269,6 +1313,105 @@ mod tests {
         let db = Database::new_in_memory().unwrap();
         // No panic, nothing written: the path has no project row.
         upsert_counts_cache(&db, "/nowhere", "cli", &[], &GroupCounts::default());
+    }
+
+    // --- stories stay out of the home page counts ---
+
+    fn bead_of_type(id: &str, status: &str, issue_type: &str) -> Bead {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "title": id, "status": status, "issue_type": issue_type
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn test_counted_statuses_skip_stories() {
+        let beads = vec![
+            bead_of_type("a", "open", "task"),
+            bead_of_type("b", "open", "story"),
+            bead_of_type("c", "deferred", "story"),
+            bead_with_status("d", "in_progress"),
+        ];
+        assert_eq!(counted_statuses(&beads), vec!["open", "in_progress"]);
+    }
+
+    #[test]
+    fn test_legacy_counts_skip_stories() {
+        let beads = vec![
+            bead_of_type("a", "open", "story"),
+            bead_of_type("b", "closed", "story"),
+            bead_of_type("c", "open", "feature"),
+        ];
+        assert_eq!(legacy_counts(&beads), LegacyCounts { open: 1, in_progress: 0, inreview: 0, closed: 0 });
+    }
+
+    // --- defer date ---
+
+    #[test]
+    fn test_parse_defer_until_snake_case() {
+        // Real `bd export` line from bd 1.3.0 after `bd update X --defer=2026-10-10`.
+        let line = r#"{"_type":"issue","id":"scr-20z","title":"story one","status":"deferred","priority":2,"issue_type":"story","defer_until":"2026-10-09T20:00:00Z"}"#;
+        let beads = parse_beads_from_jsonl(line);
+        assert_eq!(beads[0].defer_until.as_deref(), Some("2026-10-09T20:00:00Z"));
+        assert_eq!(beads[0].status, "deferred");
+    }
+
+    #[test]
+    fn test_parse_defer_until_camel_case() {
+        let json = r#"{"id":"a","title":"A","status":"deferred","deferUntil":"2026-10-09T20:00:00Z"}"#;
+        let bead: Bead = serde_json::from_str(json).unwrap();
+        assert_eq!(bead.defer_until.as_deref(), Some("2026-10-09T20:00:00Z"));
+    }
+
+    #[test]
+    fn test_defer_until_missing_is_none_and_sent_to_page() {
+        let bead = bead_with_status("a", "open");
+        assert!(bead.defer_until.is_none());
+        let json = serde_json::to_value(&bead).unwrap();
+        assert!(json.as_object().unwrap().contains_key("defer_until"));
+    }
+
+    // --- bd update arguments ---
+
+    fn update_request(extra: serde_json::Value) -> UpdateBeadRequest {
+        let mut body = serde_json::json!({ "path": "/p", "id": "x-1" });
+        body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(body).unwrap()
+    }
+
+    #[test]
+    fn test_update_args_set_defer() {
+        let req = update_request(serde_json::json!({ "defer": "2026-10-10" }));
+        assert!(req_has_changes(&req));
+        assert_eq!(build_update_args(&req), vec!["update", "x-1", "--defer=2026-10-10"]);
+    }
+
+    #[test]
+    fn test_update_args_clear_defer_with_empty_string() {
+        let req = update_request(serde_json::json!({ "defer": "" }));
+        assert!(req_has_changes(&req));
+        assert_eq!(build_update_args(&req), vec!["update", "x-1", "--defer="]);
+    }
+
+    #[test]
+    fn test_update_args_promote_story_in_one_call() {
+        // "В работу": type, status and clearing the defer date in one bd call.
+        let req = update_request(serde_json::json!({ "issue_type": "epic", "status": "open", "defer": "" }));
+        assert_eq!(
+            build_update_args(&req),
+            vec!["update", "x-1", "--status=open", "--type=epic", "--defer="]
+        );
+    }
+
+    #[test]
+    fn test_update_args_without_defer_leave_it_alone() {
+        let req = update_request(serde_json::json!({ "title": "New" }));
+        assert_eq!(build_update_args(&req), vec!["update", "x-1", "--title=New"]);
+    }
+
+    #[test]
+    fn test_update_without_fields_has_no_changes() {
+        assert!(!req_has_changes(&update_request(serde_json::json!({}))));
     }
 
     // --- stale issues.jsonl fields ---
@@ -1568,6 +1711,7 @@ mod tests {
             updated_at: None,
             closed_at: None,
             close_reason: None,
+            defer_until: None,
             comments: None,
             parent_id: None,
             children: None,

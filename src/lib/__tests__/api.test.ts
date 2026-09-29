@@ -84,6 +84,35 @@ describe('api.beads', () => {
       expect(JSON.parse(options.body)).toEqual(updateData);
       expect(result).toEqual({ success: true });
     });
+
+    it('sends a defer date, and an empty one to clear it', async () => {
+      mockFetch.mockResolvedValue(mockResponse({ success: true }));
+
+      await api.beads.update({ path: '/p', id: 'x-1', defer: '2026-10-10' });
+      await api.beads.update({ path: '/p', id: 'x-1', issue_type: 'epic', status: 'open', defer: '' });
+
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body).defer).toBe('2026-10-10');
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+        path: '/p', id: 'x-1', issue_type: 'epic', status: 'open', defer: '',
+      });
+    });
+  });
+
+  describe('read: defer date', () => {
+    it('keeps defer_until from the server, and accepts null', async () => {
+      const deferred = { id: 'a', title: 'A', status: 'deferred', defer_until: '2026-10-09T20:00:00Z' };
+      const plain = { id: 'b', title: 'B', status: 'open', defer_until: null };
+      mockFetch.mockResolvedValue(mockResponse({ beads: [deferred, plain] }));
+
+      const data = await api.beads.read('/p');
+
+      expect(data.beads[0].defer_until).toBe('2026-10-09T20:00:00Z');
+    });
+
+    it('refuses a defer_until that is not a string', async () => {
+      mockFetch.mockResolvedValue(mockResponse({ beads: [{ id: 'a', title: 'A', status: 'deferred', defer_until: 5 }] }));
+      await expect(api.beads.read('/p')).rejects.toThrow();
+    });
   });
 
   describe('read', () => {

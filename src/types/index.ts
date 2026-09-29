@@ -109,6 +109,7 @@ export interface Bead {
   design?: string;            // Inline design notes (bd --design)
   notes?: string;             // Supplementary notes (bd --notes)
   close_reason?: string;      // Reason set when closing (bd close --reason)
+  defer_until?: string | null; // When a deferred bead comes back (bd update --defer); RFC 3339, UTC
   deps?: string[];            // Dependency IDs (blocking this task)
   blockers?: string[];        // COMPUTED: Tasks this blocks (derived from deps relationships)
   relates_to?: string[];      // Bead IDs with relates-to links (bidirectional "see also")
