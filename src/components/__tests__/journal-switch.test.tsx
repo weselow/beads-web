@@ -26,14 +26,28 @@ beforeEach(() => {
 });
 
 describe('JournalSwitch visibility', () => {
-  it.each(['dolt-project', 'dolt-central', 'dolt-direct', 'jsonl'])(
-    'is hidden for a project read from %s',
+  it('is hidden for a project read from an old issues.jsonl export', () => {
+    const { container } = render(<JournalSwitch projectPath="/p" source="jsonl" />);
+    expect(container).toBeEmptyDOMElement();
+    expect(getMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['dolt-project', 'dolt-central', 'dolt-direct'])(
+    'shows a Direct SQL label instead of the switch for %s',
     (source) => {
-      const { container } = render(<JournalSwitch projectPath="/p" source={source} />);
-      expect(container).toBeEmptyDOMElement();
+      render(<JournalSwitch projectPath="/p" source={source} />);
+      const label = screen.getByText('Direct SQL');
+      expect(label).toHaveAccessibleDescription(/Dolt SQL server/);
+      expect(label).toHaveAccessibleDescription(/journal is not used/);
+      expect(screen.queryByRole('switch')).not.toBeInTheDocument();
       expect(getMock).not.toHaveBeenCalled();
     },
   );
+
+  it('passes the header class on to the Direct SQL label', () => {
+    render(<JournalSwitch projectPath="/p" source="dolt-project" className="font-mono uppercase" />);
+    expect(screen.getByText('Direct SQL')).toHaveClass('font-mono', 'uppercase', 'text-t-muted');
+  });
 
   it('is hidden before the first read reports a source', () => {
     const { container } = render(<JournalSwitch projectPath="/p" source={null} />);
@@ -53,6 +67,7 @@ describe('JournalSwitch visibility', () => {
     render(<JournalSwitch projectPath="/p" source="cli-journal" />);
     const toggle = await screen.findByRole('switch', { name: /journal/i });
     await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+    expect(screen.queryByText('Direct SQL')).not.toBeInTheDocument();
   });
 });
 
