@@ -158,3 +158,16 @@ export function flattenVisible(roots: readonly TreeNode[], collapsed: ReadonlySe
   }
   return rows;
 }
+
+/** Ids of every node that has children: what Collapse all folds. */
+export function parentIds(roots: readonly TreeNode[]): string[] {
+  const ids: string[] = [];
+  const stack = [...roots];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.children.length === 0) continue;
+    ids.push(node.bead.id);
+    stack.push(...node.children);
+  }
+  return ids;
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { BUILTIN_STATUSES } from '@/lib/statuses';
-import { buildTree, flattenVisible, type BuildTreeOptions, type TreeNode } from '@/lib/tree';
+import { buildTree, flattenVisible, parentIds, type BuildTreeOptions, type TreeNode } from '@/lib/tree';
 import type { Bead, StatusInfo } from '@/types';
 
 const statuses: StatusInfo[] = [...BUILTIN_STATUSES, { name: 'shipped', category: 'done', builtin: false }];
@@ -121,5 +121,12 @@ describe('flattenVisible', () => {
     expect(visible([])).toEqual(['a', 'b', 'c', 'd']);
     expect(visible(['b'])).toEqual(['a', 'b', 'd']);
     expect(visible(['a'])).toEqual(['a', 'd']);
+  });
+});
+
+describe('parentIds', () => {
+  it('lists every node that has children, at any depth', () => {
+    const beads = [bead('a'), bead('b', { parent_id: 'a' }), bead('c', { parent_id: 'b' }), bead('d')];
+    expect(parentIds(build(beads)).toSorted()).toEqual(['a', 'b']);
   });
 });
