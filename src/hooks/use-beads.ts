@@ -42,6 +42,8 @@ export interface UseBeadsResult {
    * `null` when the data is current.
    */
   stale: StaleSource | null;
+  /** Where the last read came from (`source` of /api/beads); null before it. */
+  source: string | null;
   /** Manually refresh beads, optionally bypassing incremental loading. */
   refresh: (options?: RefreshBeadsOptions) => Promise<void>;
 }
@@ -271,6 +273,7 @@ export function useBeads(projectPath: string): UseBeadsResult {
     isLoading,
     error,
     stale,
+    source: dataSource,
     refresh,
   };
 }

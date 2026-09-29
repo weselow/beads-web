@@ -187,6 +187,34 @@ export const beads = {
 };
 
 /**
+ * State of a project's bd events journal (`events-journal` in .beads/config.yaml).
+ */
+export interface JournalState {
+  enabled: boolean;
+  /** BD_EVENTS_JOURNAL is set for the server and overrides config.yaml. */
+  forced_by_env: boolean;
+}
+
+// `bd config set` in an embedded Dolt project takes a few seconds; the server
+// gives bd 30 s.
+const JOURNAL_SET_TIMEOUT_MS = 35000;
+
+/**
+ * Events journal switch of a project read through bd.
+ */
+export const journal = {
+  get: (path: string) =>
+    fetchApi<JournalState>(`/api/projects/journal?${new URLSearchParams({ path })}`),
+
+  set: (path: string, enabled: boolean) =>
+    fetchApi<JournalState>('/api/projects/journal', {
+      method: 'POST',
+      body: JSON.stringify({ path, enabled }),
+      signal: AbortSignal.timeout(JOURNAL_SET_TIMEOUT_MS),
+    }),
+};
+
+/**
  * Project statuses API: bd's built-in statuses plus the project's own.
  */
 export const statuses = {
