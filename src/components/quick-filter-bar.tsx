@@ -131,7 +131,8 @@ function ViewSwitch({ view, onViewChange }: ViewSwitchProps) {
           title={label}
           className={cn(
             'h-7 w-7 flex items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-raised',
-            view === value ? 'bg-surface-raised text-t-primary shadow-sm' : 'text-t-tertiary hover:text-t-secondary'
+            // Same "on" look as Today and Memory in this bar
+            view === value ? 'bg-epic/20 text-epic' : 'text-t-tertiary hover:text-t-secondary'
           )}
         >
           <Icon className="size-4" aria-hidden="true" />
