@@ -96,6 +96,17 @@ function captureInput() {
 }
 
 describe('quick capture', () => {
+  it('puts the cursor in the capture field when the panel opens', () => {
+    renderPanel();
+    expect(captureInput()).toHaveFocus();
+  });
+
+  it('leaves the cursor elsewhere in the panel on an old copy', () => {
+    renderPanel({ readOnly: true });
+    expect(captureInput()).not.toHaveFocus();
+    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
+  });
+
   it('creates a story on Enter and clears the field', async () => {
     const { onChanged } = renderPanel();
     fireEvent.change(captureInput(), { target: { value: '  Dark mode for print  ' } });
