@@ -12,6 +12,7 @@ import { BeadDetail } from "@/components/bead-detail";
 import { CommentList } from "@/components/comment-list";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { IdeasPanel } from "@/components/ideas-panel";
 import { JournalSwitch } from "@/components/journal-switch";
 import { KanbanColumn } from "@/components/kanban-column";
 import { MemoryPanel } from "@/components/memory-panel";
@@ -40,7 +41,7 @@ import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
 import { isBlocked } from "@/lib/bead-utils";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
 import { buildBoardColumns } from "@/lib/board-columns";
-import { getIssueTypeMeta } from "@/lib/issue-types";
+import { filterBoardTypes, splitIdeas } from "@/lib/ideas";
 import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoneStatus } from "@/lib/statuses";
 import { isDoltProject } from "@/lib/utils";
@@ -113,6 +114,9 @@ export default function KanbanBoard() {
   // Theme
   const { theme } = useTheme();
 
+  // Ideas panel state
+  const [isIdeasOpen, setIsIdeasOpen] = useState(false);
+
   // Memory panel state
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
 
@@ -165,18 +169,17 @@ export default function KanbanBoard() {
   );
 
   /**
-   * Filter to only top-level beads (no parent_id)
-   * Then apply the issue type filter ("all" or a specific type).
-   * A missing issue type counts as "task"; an unknown one matches only "all".
-   * Child tasks should not appear in columns - they appear inside epic cards
+   * Filter to only top-level beads (no parent_id), then apply the issue type
+   * filter. Stories stay off the board unless Story is picked: they live in
+   * the Ideas panel. Child tasks appear inside epic cards, not in columns.
    */
-  const topLevelBeads = useMemo(() => {
-    const topLevel = filteredBeads.filter(b => !b.parent_id);
+  const topLevelBeads = useMemo(
+    () => filterBoardTypes(filteredBeads.filter(b => !b.parent_id), typeFilter),
+    [filteredBeads, typeFilter]
+  );
 
-    // Apply issue type filter
-    if (typeFilter === "all") return topLevel;
-    return topLevel.filter(b => getIssueTypeMeta(b.issue_type).value === typeFilter);
-  }, [filteredBeads, typeFilter]);
+  // Open ideas for the counter on the Ideas button
+  const ideasCount = useMemo(() => splitIdeas(beads, statuses, new Date()).active.length, [beads, statuses]);
 
   /**
    * Split top-level beads into a column per status of the project; pinned
@@ -201,6 +204,14 @@ export default function KanbanBoard() {
     handleDetailOpenChange,
     navigateToBead,
   } = useBeadDetail(beads);
+
+  // An idea opens in the same card as a board bead. The Ideas panel closes
+  // first: it is modal and sits on the same layer, so it would cover the card
+  // and block clicks on it.
+  const openIdea = useCallback((bead: Bead) => {
+    setIsIdeasOpen(false);
+    openBead(bead);
+  }, [openBead]);
 
   // Ref for search input (keyboard navigation)
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -346,6 +357,10 @@ export default function KanbanBoard() {
           availableOwners={availableOwners}
           onClearFilters={clearFilters}
           hasActiveFilters={hasActiveFilters}
+          // Ideas
+          isIdeasOpen={isIdeasOpen}
+          onIdeasToggle={() => setIsIdeasOpen((prev) => !prev)}
+          ideasCount={ideasCount}
           // Memory
           isMemoryOpen={isMemoryOpen}
           onMemoryToggle={() => setIsMemoryOpen((prev) => !prev)}
@@ -443,6 +458,22 @@ export default function KanbanBoard() {
           />
         </BeadDetail>
       )}
+      </ErrorBoundary>
+
+      {/* Ideas Panel (works for dolt-only projects too, except Dismiss) */}
+      <ErrorBoundary label="Ideas Panel">
+        <IdeasPanel
+          open={isIdeasOpen}
+          onOpenChange={setIsIdeasOpen}
+          beads={beads}
+          statuses={statuses}
+          projectPath={project.path}
+          fsPath={fsPath}
+          isDoltOnly={isDoltOnly}
+          readOnly={readOnly}
+          onOpenBead={openIdea}
+          onChanged={refreshBeads}
+        />
       </ErrorBoundary>
 
       {/* Memory Panel (requires filesystem path) */}
