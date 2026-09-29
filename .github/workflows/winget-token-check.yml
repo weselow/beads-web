@@ -1,0 +1,26 @@
+# TEMPORARY (beads-web-gkq): checks the permissions of WINGET_TOKEN and syncs
+# the winget-pkgs fork with it. Removed before the branch is merged.
+name: winget token check
+
+on:
+  push:
+    branches: [bd-beads-web-gkq]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Token permissions and fork sync
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -z "$WINGET_TOKEN" ]; then echo "WINGET_TOKEN not set"; exit 1; fi
+          echo "== scopes (classic tokens only; fine-grained tokens send no such header)"
+          curl -sI -H "Authorization: token $WINGET_TOKEN" https://api.github.com/user \
+            | grep -i -E '^(x-oauth-scopes|github-authentication-token-expiration)' || echo "no X-OAuth-Scopes header"
+          echo "== fork before sync"
+          GH_TOKEN="$WINGET_TOKEN" gh api "repos/weselow/winget-pkgs/compare/master...microsoft:winget-pkgs:master" --jq '"fork behind upstream by \(.ahead_by) commits"'
+          echo "== sync"
+          GH_TOKEN="$WINGET_TOKEN" gh repo sync weselow/winget-pkgs --source microsoft/winget-pkgs
+          echo "== fork after sync"
+          GH_TOKEN="$WINGET_TOKEN" gh api "repos/weselow/winget-pkgs/compare/master...microsoft:winget-pkgs:master" --jq '"fork behind upstream by \(.ahead_by) commits"'

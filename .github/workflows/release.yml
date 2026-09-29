@@ -200,12 +200,21 @@ jobs:
           # recovery written down in RELEASE.md. ErrorActionPreference is
           # relaxed around the call because pwsh turns a non-zero native exit
           # into a terminating error when it is 'Stop'.
+          #
+          # At 0.13.0 the sync failed because upstream had changed files under
+          # .github/workflows: GitHub only lets a token with the `workflow`
+          # permission bring those into the fork (beads-web-gkq).
           $fork = "${{ github.repository_owner }}/winget-pkgs"
           $env:GH_TOKEN = $env:WINGET_TOKEN
           $ErrorActionPreference = 'Continue'
-          gh repo sync $fork --source microsoft/winget-pkgs
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::warning::Could not sync $fork with microsoft/winget-pkgs (exit $LASTEXITCODE). Continuing. If wingetcreate now fails with 'The forked repository could not be synced', run 'gh repo sync $fork --source microsoft/winget-pkgs' and re-run this job."
+          $syncOutput = gh repo sync $fork --source microsoft/winget-pkgs 2>&1
+          $syncExit = $LASTEXITCODE
+          $syncOutput | Write-Host
+          if ($syncExit -ne 0) {
+            if ("$syncOutput" -match 'workflow') {
+              Write-Host "::warning::WINGET_TOKEN lacks the 'workflow' permission: upstream changed .github/workflows, so the fork cannot be synced. Recreate the token with it (classic: public_repo + workflow; fine-grained: Contents and Workflows read/write on $fork)."
+            }
+            Write-Host "::warning::Could not sync $fork with microsoft/winget-pkgs (exit $syncExit). Continuing. If wingetcreate now fails with 'The forked repository could not be synced', run 'gh repo sync $fork --source microsoft/winget-pkgs' and re-run this job."
           }
           $global:LASTEXITCODE = 0
           $ErrorActionPreference = 'Stop'
