@@ -31,9 +31,10 @@ import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
 import { compareBeads } from "@/lib/bead-sort";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
-import { filterBoardTypes, splitIdeas } from "@/lib/ideas";
+import { splitIdeas } from "@/lib/ideas";
 import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoneStatus } from "@/lib/statuses";
+import { matchTreeTypes } from "@/lib/tree";
 import { isDoltProject } from "@/lib/utils";
 import type { Bead } from "@/types";
 
@@ -186,11 +187,12 @@ export default function KanbanBoard() {
   const ideasCount = useMemo(() => splitIdeas(beads, statuses, new Date()).active.length, [beads, statuses]);
 
   // The tree marks the beads that pass the filter bar. Unlike the board it
-  // keeps children of epics as rows of their own, so no selectBoardBeads here.
+  // keeps children of epics as rows of their own, so no selectBoardBeads here,
+  // and a picked type brings each of its beads with the branch under it.
   // Both values stay stable between renders: the tree rebuilds when they change.
   const treeMatchedIds = useMemo(
-    () => new Set(filterBoardTypes(filteredBeads, typeFilter).map((b) => b.id)),
-    [filteredBeads, typeFilter]
+    () => matchTreeTypes(filteredBeads, beads, typeFilter),
+    [filteredBeads, beads, typeFilter]
   );
   const treeCompare = useMemo(
     () => compareBeads(filters.sortField, filters.sortDirection, ticketNumbers),
