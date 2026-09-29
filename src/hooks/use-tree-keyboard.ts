@@ -2,8 +2,9 @@
 
 /**
  * Keys of the tree view, as the board has them (see use-keyboard-navigation):
- * arrows and j/k move the picked row, right/left fold, unfold and walk the
- * levels, Enter opens the picked bead, Escape drops the pick or leaves the
+ * arrows and j/k move the picked row, Home/End go to the first/last row,
+ * right/left fold, unfold and walk the levels, Enter opens the picked bead,
+ * Escape drops the pick or leaves the
  * search box, / goes to the search box. Keys typed in a text field stay there,
  * and nothing acts while the bead card is open.
  */
@@ -33,6 +34,7 @@ interface KeyContext extends Omit<TreeKeyboardOptions, "roots" | "isDetailOpen">
 
 const STEPS: Readonly<Record<string, TreeStep>> = {
   ArrowUp: "up", k: "up", ArrowDown: "down", j: "down", ArrowRight: "right", ArrowLeft: "left",
+  Home: "first", End: "last",
 };
 
 const isTextField = (el: HTMLElement) =>

@@ -213,8 +213,8 @@ export function flattenVisible(roots: readonly TreeNode[], collapsed: ReadonlySe
   return rows;
 }
 
-/** An arrow key in the tree. */
-export type TreeStep = "up" | "down" | "right" | "left";
+/** A move key in the tree: an arrow, or Home ("first") and End ("last"). */
+export type TreeStep = "up" | "down" | "right" | "left" | "first" | "last";
 
 /** What an arrow key does: pick another row, fold or unfold a row, or nothing. */
 export type TreeMove = { select: string } | { toggle: string } | null;
@@ -231,11 +231,13 @@ function parentRow(rows: readonly TreeNode[], index: number): TreeNode | undefin
  * The tree's arrow keys over the rows on screen. Up and down go to the next
  * row, starting at the first or the last when nothing is picked. Right unfolds
  * a folded row, then goes to its first child. Left folds an unfolded row,
- * otherwise goes to the parent.
+ * otherwise goes to the parent. First and last go to the first and the last row.
  */
 export function treeStep(
   rows: readonly TreeNode[], collapsed: ReadonlySet<string>, selectedId: string | null, step: TreeStep
 ): TreeMove {
+  if (step === "first") return selectRow(rows[0]);
+  if (step === "last") return selectRow(rows.at(-1));
   const index = rows.findIndex((node) => node.bead.id === selectedId);
   if (step === "down") return selectRow(index < 0 ? rows[0] : rows[index + 1]);
   if (step === "up") return selectRow(index < 0 ? rows.at(-1) : rows[index - 1]);
