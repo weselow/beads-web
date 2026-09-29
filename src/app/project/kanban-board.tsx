@@ -338,6 +338,8 @@ export default function KanbanBoard() {
               ticketNumbers={ticketNumbers}
               compare={treeCompare}
               onOpenBead={openBead}
+              isDetailOpen={isDetailOpen}
+              searchInputRef={searchInputRef}
             />
           </div>
         ) : (
