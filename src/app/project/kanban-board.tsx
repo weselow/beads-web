@@ -1,59 +1,73 @@
 "use client";
 
-import { useMemo, useRef, useState, useCallback, useEffect } from "react";
+import { useMemo, useRef, useState, useCallback, useEffect, type ReactNode } from "react";
 
 import { useSearchParams, useRouter } from "next/navigation";
-
-import { ArrowLeft, EllipsisVertical } from "lucide-react";
 
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { AgentsPanel } from "@/components/agents-panel";
 import { BeadDetail } from "@/components/bead-detail";
+import { BoardView } from "@/components/board-view";
 import { CommentList } from "@/components/comment-list";
 import { CreateBeadDialog } from "@/components/create-bead-dialog";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { GitHubWarningDialog } from "@/components/github-warning-dialog";
 import { IdeasPanel } from "@/components/ideas-panel";
-import { JournalSwitch } from "@/components/journal-switch";
-import { KanbanColumn } from "@/components/kanban-column";
 import { MemoryPanel } from "@/components/memory-panel";
+import { ProjectHeader } from "@/components/project-header";
 import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
 import { QuickFilterBar } from "@/components/quick-filter-bar";
 import { StaleDataBanner } from "@/components/stale-data-banner";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogClose,
-} from "@/components/ui/alert-dialog";
+import { TreeView } from "@/components/tree-view";
 import { Button } from "@/components/ui/button";
 import { useBeadDetail } from "@/hooks/use-bead-detail";
 import { useBeadFilters } from "@/hooks/use-bead-filters";
 import { useBeads } from "@/hooks/use-beads";
 import { useGitHubStatus } from "@/hooks/use-github-status";
-import { useKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 import { useProject } from "@/hooks/use-project";
+import { useProjectView } from "@/hooks/use-project-view";
 import { useStatuses } from "@/hooks/use-statuses";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorktreeStatuses } from "@/hooks/use-worktree-statuses";
-import { isBlocked } from "@/lib/bead-utils";
+import { compareBeads } from "@/lib/bead-sort";
 import { getUnknownStatusBeads, getUnknownStatusNames } from "@/lib/beads-parser";
-import { buildBoardColumns, selectBoardBeads } from "@/lib/board-columns";
 import { filterBoardTypes, splitIdeas } from "@/lib/ideas";
 import type { IssueTypeFilter } from "@/lib/issue-types";
 import { isDoneStatus } from "@/lib/statuses";
 import { isDoltProject } from "@/lib/utils";
 import type { Bead } from "@/types";
 
+interface PageMessageProps {
+  children: ReactNode;
+  /** "status" while loading, "alert" for an error */
+  role?: "status" | "alert";
+  /** Adds a way back to the project list */
+  backLink?: boolean;
+}
+
+/** A whole-page message in place of the project: redirect, loading, error */
+function PageMessage({ children, role, backLink = false }: PageMessageProps) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-dvh bg-surface-base gap-4">
+      <div role={role} className={role === "alert" ? "text-danger" : "text-t-muted"}>{children}</div>
+      {backLink && (
+        <Button variant="outline" asChild>
+          <a href="/">Back to projects</a>
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /**
- * Main Kanban board component with status columns, search, filter, and keyboard navigation
+ * Project page: header, filter bar, then the beads as a Kanban board or as a
+ * tree (?view=tree). The card, the side panels and the dialogs serve both.
  */
 export default function KanbanBoard() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const projectId = searchParams.get('id');
+  const [view, setView] = useProjectView();
 
   // Fetch project data from SQLite
   const {
@@ -168,25 +182,20 @@ export default function KanbanBoard() {
     isDoltOnly ? [] : beadIds
   );
 
-  /**
-   * Beads with a card of their own, then the issue type filter. Children of
-   * an epic appear inside the epic card; children of any other parent get
-   * their own card. Stories stay off the board unless Story is picked: they
-   * live in the Ideas panel.
-   */
-  const topLevelBeads = useMemo(
-    () => filterBoardTypes(selectBoardBeads(filteredBeads, beads), typeFilter),
-    [filteredBeads, beads, typeFilter]
-  );
-
   // Open ideas for the counter on the Ideas button
   const ideasCount = useMemo(() => splitIdeas(beads, statuses, new Date()).active.length, [beads, statuses]);
 
-  /**
-   * Split top-level beads into a column per status of the project; pinned
-   * beads sit at the top of open, empty minor columns collapse.
-   */
-  const columns = useMemo(() => buildBoardColumns(topLevelBeads, statuses), [topLevelBeads, statuses]);
+  // The tree marks the beads that pass the filter bar. Unlike the board it
+  // keeps children of epics as rows of their own, so no selectBoardBeads here.
+  // Both values stay stable between renders: the tree rebuilds when they change.
+  const treeMatchedIds = useMemo(
+    () => new Set(filterBoardTypes(filteredBeads, typeFilter).map((b) => b.id)),
+    [filteredBeads, typeFilter]
+  );
+  const treeCompare = useMemo(
+    () => compareBeads(filters.sortField, filters.sortDirection, ticketNumbers),
+    [filters.sortField, filters.sortDirection, ticketNumbers]
+  );
 
   /**
    * Beads whose status is not in the project's list, for the warning indicator.
@@ -206,6 +215,8 @@ export default function KanbanBoard() {
     navigateToBead,
   } = useBeadDetail(beads);
 
+  const closeDetail = useCallback(() => handleDetailOpenChange(false), [handleDetailOpenChange]);
+
   // An idea opens in the same card as a board bead. The Ideas panel closes
   // first: it is modal and sits on the same layer, so it would cover the card
   // and block clicks on it.
@@ -217,24 +228,6 @@ export default function KanbanBoard() {
   // Ref for search input (keyboard navigation)
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Keyboard navigation (use top-level beads for navigation)
-  const { selectedId } = useKeyboardNavigation({
-    beads: topLevelBeads,
-    columns,
-    selectedId: null,
-    onSelect: () => {
-      // Just highlight, don't open detail
-    },
-    onOpen: (bead) => {
-      openBead(bead);
-    },
-    onClose: () => {
-      handleDetailOpenChange(false);
-    },
-    searchInputRef,
-    isDetailOpen,
-  });
-
   // Redirect if no project ID
   useEffect(() => {
     if (!projectId) {
@@ -243,98 +236,32 @@ export default function KanbanBoard() {
   }, [projectId, router]);
 
 
-  // Redirect state while no project ID
-  if (!projectId) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-surface-base">
-        <p className="text-t-muted">Redirecting…</p>
-      </div>
-    );
-  }
-
-  // Show loading state
-  if (projectLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-dvh bg-surface-base">
-        <div role="status" className="text-t-muted">Loading project…</div>
-      </div>
-    );
-  }
-
-  // Show project error state
+  if (!projectId) return <PageMessage>Redirecting…</PageMessage>;
+  if (projectLoading) return <PageMessage role="status">Loading project…</PageMessage>;
   if (projectError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-dvh bg-surface-base gap-4">
-        <div role="alert" className="text-danger">Error: {projectError.message}</div>
-        <Button variant="outline" asChild>
-          <a href="/">Back to projects</a>
-        </Button>
-      </div>
-    );
+    return <PageMessage role="alert" backLink>Error: {projectError.message}</PageMessage>;
   }
-
-  // Project not found
-  if (!project) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-dvh bg-surface-base gap-4">
-        <div className="text-t-muted">Project not found</div>
-        <Button variant="outline" asChild>
-          <a href="/">Back to projects</a>
-        </Button>
-      </div>
-    );
-  }
+  if (!project) return <PageMessage backLink>Project not found</PageMessage>;
 
   return (
     <div className="min-h-dvh bg-surface-base flex flex-col">
-      {/* Header — terminal variant for neo-brutalist, standard otherwise */}
-      {theme.headerVariant === 'terminal' ? (
-        <div className="flex items-center justify-between gap-4 px-6 py-4 terminal-header">
-          <div className="flex min-w-0 items-center gap-3">
-            <h1 className="min-w-0 font-mono text-xl font-bold tracking-wide truncate">
-              <a href="/" className="hover:opacity-80">&gt;</a>{' '}
-              <span className="uppercase">{project.name}_</span>
-            </h1>
-            <JournalSwitch
-              projectPath={project.path}
-              source={beadsSource}
-              onChanged={refreshAfterJournalSwitch}
-              className="font-mono uppercase"
-            />
-          </div>
-          <span className="shrink-0 font-mono text-xs text-t-muted uppercase tracking-widest">
-            {beads.length} beads // {beads.filter(b => b.issue_type === 'epic').length} epics // {beads.filter(b => isBlocked(b, beads, statuses)).length} blocked
-          </span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 px-4 py-2">
-          <Button variant="ghost" size="icon" className="shrink-0" asChild>
-            <a href="/">
-              <ArrowLeft className="h-4 w-4" />
-              <span className="sr-only">Back to projects</span>
-            </a>
-          </Button>
-          <h1 className="min-w-0 text-lg font-semibold truncate">{project.name}</h1>
-          <JournalSwitch
-            projectPath={project.path}
-            source={beadsSource}
-            onChanged={refreshAfterJournalSwitch}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label="Project settings"
-            onClick={() => setIsSettingsOpen(true)}
-          >
-            <EllipsisVertical className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
+      <ProjectHeader
+        variant={theme.headerVariant}
+        projectName={project.name}
+        projectPath={project.path}
+        beadsSource={beadsSource}
+        onJournalChanged={refreshAfterJournalSwitch}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        beads={beads}
+        statuses={statuses}
+      />
 
       {/* Quick Filter Bar */}
       <div className="flex justify-center px-4 pb-3">
         <QuickFilterBar
+          // Board or tree
+          view={view}
+          onViewChange={setView}
           // Search
           search={filters.search}
           onSearchChange={(value) => setFilters({ search: value })}
@@ -384,12 +311,13 @@ export default function KanbanBoard() {
         </div>
       )}
 
-      {/* Kanban Columns.
+      {/* Board or tree.
           The boundary sits inside <main> on purpose: a render error in the
-          columns must not take down the header and the filter bar, which are
-          the user's way back to the project list. */}
+          beads must not take down the header and the filter bar, which are
+          the user's way back to the project list. It is keyed by the view,
+          so switching views clears an error of the other one. */}
       <main className="flex-1 overflow-hidden p-4">
-        <ErrorBoundary label="Kanban Board">
+        <ErrorBoundary key={view} label={view === "tree" ? "Tree view" : "Kanban Board"}>
         {beadsLoading || statusesLoading ? (
           <div className="flex items-center justify-center h-full">
             <div role="status" className="text-t-muted">Loading beads…</div>
@@ -398,29 +326,34 @@ export default function KanbanBoard() {
           <div className="flex items-center justify-center h-full">
             <div role="alert" className="text-danger">Error loading beads: {beadsError.message}</div>
           </div>
-        ) : (
-          <div className="flex h-full overflow-x-auto" style={{ gap: 'var(--column-gap)' }}>
-            {columns.map(({ status, title, category, collapsed, beads: columnBeads }) => (
-              <KanbanColumn
-                key={status}
-                status={status}
-                title={title}
-                category={category}
-                collapsed={collapsed}
-                beads={columnBeads}
-                allBeads={beads}
-                selectedBeadId={selectedId}
-                ticketNumbers={ticketNumbers}
-                onSelectBead={openBead}
-                onChildClick={openBead}
-                onNavigateToDependency={navigateToBead}
-                projectPath={project?.path}
-                onUpdate={refreshBeads}
-                readOnly={readOnly}
-                statuses={statuses}
-              />
-            ))}
+        ) : view === "tree" ? (
+          <div className="flex h-full flex-col overflow-hidden theme-column border border-b-default/50 bg-surface-raised/30">
+            <TreeView
+              projectId={project.id}
+              beads={beads}
+              matchedIds={treeMatchedIds}
+              statuses={statuses}
+              ticketNumbers={ticketNumbers}
+              compare={treeCompare}
+              onOpenBead={openBead}
+            />
           </div>
+        ) : (
+          <BoardView
+            beads={beads}
+            filteredBeads={filteredBeads}
+            typeFilter={typeFilter}
+            statuses={statuses}
+            ticketNumbers={ticketNumbers}
+            projectPath={project.path}
+            readOnly={readOnly}
+            onUpdate={refreshBeads}
+            onOpenBead={openBead}
+            onNavigateToBead={navigateToBead}
+            isDetailOpen={isDetailOpen}
+            onCloseDetail={closeDetail}
+            searchInputRef={searchInputRef}
+          />
         )}
         </ErrorBoundary>
       </main>
@@ -521,24 +454,11 @@ export default function KanbanBoard() {
         />
       )}
 
-      {/* GitHub Integration Warning Dialog */}
-      <AlertDialog open={showGitHubWarning} onOpenChange={(open) => !open && setGithubWarningDismissed(true)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>GitHub Integration Unavailable</AlertDialogTitle>
-            <AlertDialogDescription>
-              {!hasRemote
-                ? "This repository doesn't have a GitHub remote configured."
-                : "GitHub CLI is not authenticated."}
-              {" "}PR features (Create PR, Merge PR, status checks) will not be available.
-              You can still work on tasks locally.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose render={<Button>Continue Without GitHub</Button>} />
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <GitHubWarningDialog
+        open={showGitHubWarning}
+        hasRemote={hasRemote}
+        onDismiss={() => setGithubWarningDismissed(true)}
+      />
     </div>
   );
 }
