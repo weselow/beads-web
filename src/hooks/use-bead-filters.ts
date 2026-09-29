@@ -9,17 +9,8 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 
+import { compareBeads, type SortDirection, type SortField } from "@/lib/bead-sort";
 import type { Bead } from "@/types";
-
-/**
- * Sort field options
- */
-export type SortField = "ticket_number" | "created_at";
-
-/**
- * Sort direction options
- */
-export type SortDirection = "asc" | "desc";
 
 /**
  * Filter state for beads
@@ -216,19 +207,7 @@ export function useBeadFilters(
     });
 
     // Sort the filtered results (use toSorted for immutability)
-    const sorted = filtered.toSorted((a, b) => {
-      if (sortField === "ticket_number") {
-        const aNum = ticketNumbers.get(a.id) ?? 0;
-        const bNum = ticketNumbers.get(b.id) ?? 0;
-        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
-      }
-      // created_at sort
-      const aDate = new Date(a.created_at).getTime();
-      const bDate = new Date(b.created_at).getTime();
-      return sortDirection === "asc" ? aDate - bDate : bDate - aDate;
-    });
-
-    return sorted;
+    return filtered.toSorted(compareBeads(sortField, sortDirection, ticketNumbers));
   }, [beads, debouncedSearch, filters, ticketNumbers, todayStr]);
 
   /**
