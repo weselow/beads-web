@@ -98,6 +98,21 @@ describe('api.beads', () => {
     });
   });
 
+  describe('close', () => {
+    it('calls POST /api/beads/close with the path, id and reason', async () => {
+      mockFetch.mockResolvedValue(mockResponse({ success: true }));
+
+      const result = await api.beads.close({ path: 'dolt://beads_x', id: 'x-1', reason: 'Duplicate' });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/beads/close');
+      expect(options.method).toBe('POST');
+      expect(JSON.parse(options.body)).toEqual({ path: 'dolt://beads_x', id: 'x-1', reason: 'Duplicate' });
+      expect(result).toEqual({ success: true });
+    });
+  });
+
   describe('read: defer date', () => {
     it('keeps defer_until from the server, and accepts null', async () => {
       const deferred = { id: 'a', title: 'A', status: 'deferred', defer_until: '2026-10-09T20:00:00Z' };

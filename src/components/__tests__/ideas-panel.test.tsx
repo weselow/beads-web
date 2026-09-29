@@ -13,8 +13,8 @@ import { QuickFilterBar } from '../quick-filter-bar';
 
 import type { IdeasPanelProps } from '../ideas-panel';
 
-// The panel writes through the beads API and closes through bd; neither may
-// reach a real backend here.
+// The panel writes through the beads API and closes through closeBead; none
+// of it may reach a real backend here.
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockClose = vi.fn();
@@ -77,8 +77,6 @@ function renderPanel(props: Partial<IdeasPanelProps> = {}) {
       beads={[makeStory('s1')]}
       statuses={BUILTIN_STATUSES}
       projectPath="M:/demo"
-      fsPath="M:/demo"
-      isDoltOnly={false}
       readOnly={false}
       {...handlers}
       {...props}
@@ -215,12 +213,16 @@ describe('actions', () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
-  it('turns Dismiss off without a project folder', () => {
-    renderPanel({ isDoltOnly: true, fsPath: '' });
+  it('dismisses in a dolt-only project too, through its dolt:// path', async () => {
+    const { onChanged } = renderPanel({ projectPath: 'dolt://beads_demo' });
     const dismiss = screen.getByRole('button', { name: 'Dismiss' });
-    expect(dismiss).toBeDisabled();
-    expect(dismiss).toHaveAttribute('title', 'Requires project folder path');
-    expect(screen.getByRole('button', { name: 'Promote' })).toBeEnabled();
+    expect(dismiss).toBeEnabled();
+    expect(dismiss).not.toHaveAttribute('title');
+    fireEvent.click(dismiss);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss idea' }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(mockClose).toHaveBeenCalledWith('s1', 'dolt://beads_demo', '');
   });
 
   it('turns capture and every action off on an old copy', () => {

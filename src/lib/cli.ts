@@ -137,27 +137,27 @@ export async function updateDescription(
 /**
  * Close a bead
  *
- * Executes: bd close <beadId> [--reason=<reason>]
+ * Goes through POST /api/beads/close, not a bd command, so it works for a
+ * dolt-only project too: the server runs `bd close` in a project folder and
+ * closes over SQL for `dolt://db`.
  *
  * @param beadId - The ID of the bead to close
- * @param cwd - Working directory (project path)
- * @param reason - Why it is closed; kept by bd as close_reason. Blank is left out.
- * @throws Error if command fails
+ * @param projectPath - Project folder or `dolt://db`
+ * @param reason - Why it is closed; kept as close_reason. Blank is left out.
+ * @throws Error without a project path, or with the server's message if closing fails
  *
  * @example
  * ```typescript
  * await closeBead('BD-001', '/path/to/project', 'Duplicate of BD-002');
  * ```
  */
-export async function closeBead(beadId: string, cwd?: string, reason?: string): Promise<void> {
-  const args = ["close", beadId];
-  // Glued to the flag, so a reason starting with "-" is not read as a flag.
-  if (reason?.trim()) args.push(`--reason=${reason}`);
-  const result = await executeBdCommand(args, cwd);
-
-  if (!result.success) {
-    throw new Error(result.stderr || `Failed to close bead: exit code ${result.code}`);
-  }
+export async function closeBead(beadId: string, projectPath?: string, reason?: string): Promise<void> {
+  if (!projectPath) throw new Error(`Cannot close ${beadId}: no project path`);
+  await api.beads.close({
+    path: projectPath,
+    id: beadId,
+    ...(reason?.trim() ? { reason } : {}),
+  });
 }
 
 /**

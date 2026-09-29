@@ -16,7 +16,6 @@ interface IdeaRowProps {
   now: Date;
   actions: Actions;
   readOnly: boolean;
-  canDismiss: boolean;
   onOpen: (bead: Bead) => void;
 }
 
@@ -56,7 +55,7 @@ function StaleMark() {
 }
 
 /** One idea: title that opens the bead, a few facts, the start of the description, actions. */
-export function IdeaRow({ bead, deferred, now, actions, readOnly, canDismiss, onOpen }: IdeaRowProps) {
+export function IdeaRow({ bead, deferred, now, actions, readOnly, onOpen }: IdeaRowProps) {
   const stale = isStaleIdea(bead, now);
   return (
     <li className="rounded-lg border border-b-default bg-surface-raised/50 p-3 space-y-1.5 overflow-hidden">
@@ -75,7 +74,7 @@ export function IdeaRow({ bead, deferred, now, actions, readOnly, canDismiss, on
         <p className="text-xs text-t-tertiary line-clamp-2 whitespace-pre-line">{truncate(bead.description, 240)}</p>
       )}
       <div className="pt-1">
-        <IdeaActions id={bead.id} deferred={deferred} actions={actions} readOnly={readOnly} canDismiss={canDismiss} />
+        <IdeaActions id={bead.id} deferred={deferred} actions={actions} readOnly={readOnly} />
       </div>
     </li>
   );

@@ -16,15 +16,13 @@ export interface IdeaActions {
   defer: (id: string, date: string) => Promise<boolean>;
   /** Clear the defer date, back to the main list. */
   restore: (id: string) => Promise<boolean>;
-  /** Close with an optional reason. Needs the project folder: bd runs there. */
+  /** Close with an optional reason. */
   dismiss: (id: string, reason: string) => Promise<boolean>;
 }
 
 interface IdeaActionsOptions {
   /** Project path the beads API takes (a folder or dolt://). */
   projectPath: string;
-  /** Project folder bd runs in; empty for a dolt-only project. */
-  fsPath: string;
   /** Called after a change went through, to re-read the board. */
   onChanged: () => void;
 }
@@ -33,7 +31,7 @@ interface IdeaActionsOptions {
  * Writes behind the Ideas panel's buttons. A failure is logged and shown as a
  * toast; the result says whether the change went through.
  */
-export function useIdeaActions({ projectPath, fsPath, onChanged }: IdeaActionsOptions): IdeaActions {
+export function useIdeaActions({ projectPath, onChanged }: IdeaActionsOptions): IdeaActions {
   const run = useCallback(
     async (action: string, id: string, work: () => Promise<unknown>) => {
       try {
@@ -57,7 +55,7 @@ export function useIdeaActions({ projectPath, fsPath, onChanged }: IdeaActionsOp
       promote: (id, type) => run("promote", id, () => update(id, { issue_type: type, status: "open", defer: "" })),
       defer: (id, date) => run("defer", id, () => update(id, { defer: date })),
       restore: (id) => run("restore", id, () => update(id, { defer: "" })),
-      dismiss: (id, reason) => run("dismiss", id, () => closeBead(id, fsPath, reason)),
+      dismiss: (id, reason) => run("dismiss", id, () => closeBead(id, projectPath, reason)),
     };
-  }, [run, projectPath, fsPath]);
+  }, [run, projectPath]);
 }
