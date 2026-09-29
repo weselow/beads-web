@@ -460,7 +460,7 @@ export default function KanbanBoard() {
       )}
       </ErrorBoundary>
 
-      {/* Ideas Panel (works for dolt-only projects too, except Dismiss) */}
+      {/* Ideas Panel (works for dolt-only projects too) */}
       <ErrorBoundary label="Ideas Panel">
         <IdeasPanel
           open={isIdeasOpen}
@@ -468,8 +468,6 @@ export default function KanbanBoard() {
           beads={beads}
           statuses={statuses}
           projectPath={project.path}
-          fsPath={fsPath}
-          isDoltOnly={isDoltOnly}
           readOnly={readOnly}
           onOpenBead={openIdea}
           onChanged={refreshBeads}

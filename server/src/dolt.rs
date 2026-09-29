@@ -30,6 +30,9 @@ pub enum DoltError {
 
     #[error("Database not found: {0}")]
     DatabaseNotFound(String),
+
+    #[error("Bead not found: {0}")]
+    BeadNotFound(String),
 }
 
 /// Manages the connection pool and operations against a Dolt MySQL server.
@@ -154,8 +157,7 @@ impl DoltManager {
 
         // DOLT_COMMIT needs the database selected, and `USE` implicitly commits
         // whatever transaction is open — so it has to run first.
-        let use_query = format!("USE `{}`", db_name);
-        conn.query_drop(&use_query).await
+        conn.query_drop(use_statement(db_name)).await
             .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
 
         conn.query_drop("START TRANSACTION").await
@@ -204,10 +206,7 @@ impl DoltManager {
             return Err(e);
         }
 
-        let commit_query = format!(
-            "CALL DOLT_COMMIT('-Am', 'web-ui: create {}')", id
-        );
-        conn.query_drop(&commit_query).await
+        conn.query_drop(commit_statement("create", id)).await
             .map_err(|e| DoltError::QueryFailed(format!("dolt_commit: {}", e)))?;
 
         info!("Created bead {} in Dolt (db: {})", id, db_name);
@@ -235,29 +234,96 @@ impl DoltManager {
         let mut conn = self.pool.get_conn().await
             .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
 
-        let query = format!(
-            "UPDATE `{}`.issues SET {} WHERE id = :id",
-            db_name,
-            sets.join(", ")
-        );
+        let query = update_statement(db_name, &sets);
         conn.exec_drop(&query, mysql_async::Params::Named(params.into_iter().collect()))
             .await
             .map_err(|e| DoltError::QueryFailed(format!("update: {}", e)))?;
 
-        // Dolt commit — must USE the database first
-        let use_query = format!("USE `{}`", db_name);
-        conn.query_drop(&use_query).await
-            .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
-        let commit_query = format!(
-            "CALL DOLT_COMMIT('-Am', 'web-ui: update {}')", id
-        );
-        conn.query_drop(&commit_query).await
-            .map_err(|e| DoltError::QueryFailed(format!("dolt_commit: {}", e)))?;
-
+        commit_change(&mut conn, db_name, &commit_statement("update", id)).await?;
         info!("Updated bead {} in Dolt (db: {})", id, db_name);
         Ok(())
     }
 
+    /// Closes a bead the way `bd close` does — status, `closed_at` and
+    /// `close_reason` in one statement — and commits the change.
+    pub async fn close_bead(&self, db_name: &str, id: &str, reason: &str) -> Result<(), DoltError> {
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let (query, params) = close_statement(db_name, id, reason, &now);
+
+        let mut conn = self.pool.get_conn().await
+            .map_err(|e| DoltError::ConnectionFailed(e.to_string()))?;
+        conn.exec_drop(&query, mysql_async::Params::Named(params.into_iter().collect()))
+            .await
+            .map_err(|e| DoltError::QueryFailed(format!("close: {}", e)))?;
+        if conn.affected_rows() == 0 {
+            return Err(DoltError::BeadNotFound(id.to_string()));
+        }
+
+        commit_change(&mut conn, db_name, &commit_statement("close", id)).await?;
+        info!("Closed bead {} in Dolt (db: {})", id, db_name);
+        Ok(())
+    }
+}
+
+/// The database name as it goes into SQL text: in backticks, with backticks
+/// inside doubled. The name comes from the page's `dolt://…` path, and SQL
+/// has no parameters for names, so every statement goes through this.
+fn quoted_db(db_name: &str) -> String {
+    format!("`{}`", db_name.replace('`', "``"))
+}
+
+/// `USE <db>` — Dolt needs it before `DOLT_COMMIT`.
+fn use_statement(db_name: &str) -> String {
+    format!("USE {}", quoted_db(db_name))
+}
+
+/// `UPDATE` of one bead with the given `SET` clauses; values are parameters.
+fn update_statement(db_name: &str, sets: &[String]) -> String {
+    format!("UPDATE {}.issues SET {} WHERE id = :id", quoted_db(db_name), sets.join(", "))
+}
+
+/// Commits the working set of `db_name`; Dolt needs `USE` first.
+async fn commit_change(
+    conn: &mut mysql_async::Conn,
+    db_name: &str,
+    commit_query: &str,
+) -> Result<(), DoltError> {
+    conn.query_drop(use_statement(db_name)).await
+        .map_err(|e| DoltError::QueryFailed(format!("use_db: {}", e)))?;
+    conn.query_drop(commit_query).await
+        .map_err(|e| DoltError::QueryFailed(format!("dolt_commit: {}", e)))
+}
+
+/// `CALL DOLT_COMMIT` with the message `web-ui: <action> <id>`. The id comes
+/// from the request, so backslashes and quotes in it are escaped to keep it
+/// inside the string.
+fn commit_statement(action: &str, id: &str) -> String {
+    let id = id.replace('\\', "\\\\").replace('\'', "''");
+    format!("CALL DOLT_COMMIT('-Am', 'web-ui: {} {}')", action, id)
+}
+
+/// What bd 1.3.0 stores as `close_reason` when `bd close` gets none.
+const DEFAULT_CLOSE_REASON: &str = "Closed";
+
+/// The `close_reason` value for SQL: the given reason, or bd's default.
+pub fn sql_close_reason(reason: Option<&str>) -> &str {
+    reason.unwrap_or(DEFAULT_CLOSE_REASON)
+}
+
+/// The statement that closes one bead and its named parameters; the id and
+/// the reason never go into the text.
+fn close_statement(db_name: &str, id: &str, reason: &str, now: &str) -> (String, NamedParams) {
+    let query = format!(
+        "UPDATE {}.issues SET status = 'closed', closed_at = :now, \
+         close_reason = :reason, updated_at = :now WHERE id = :id",
+        quoted_db(db_name)
+    );
+    let params: NamedParams = vec![
+        (b"now".to_vec(), now.into()),
+        (b"reason".to_vec(), reason.into()),
+        (b"id".to_vec(), id.into()),
+    ];
+    (query, params)
 }
 
 /// Fields to change on one bead over SQL; `None` leaves a field alone.
@@ -292,8 +358,23 @@ fn update_sets(update: &BeadUpdate<'_>) -> (Vec<String>, NamedParams) {
             params.push((name.as_bytes().to_vec(), value));
         }
     }
+    push_closed_sets(update.status, &mut sets);
     push_defer_sets(update, &mut sets, &mut params);
     (sets, params)
+}
+
+/// Keeps `closed_at` in step with the status, as `bd update --status` does
+/// in bd 1.3.0: `closed` stamps it (`:now` is added by the caller), any
+/// other status clears it together with the close reason.
+fn push_closed_sets(status: Option<&str>, sets: &mut Vec<String>) {
+    match status {
+        Some("closed") => sets.push("closed_at = :now".to_string()),
+        Some(_) => {
+            sets.push("closed_at = NULL".to_string());
+            sets.push("close_reason = ''".to_string());
+        }
+        None => {}
+    }
 }
 
 /// Adds the defer date the way `bd update --defer` does it: setting a date
@@ -353,8 +434,8 @@ fn port_pool(port: u16) -> Pool {
 /// SQL that reads the project's own statuses (`bd config set status.custom`).
 fn status_custom_query(db_name: &str) -> String {
     format!(
-        "SELECT `value` FROM `{}`.`config` WHERE `key` = 'status.custom'",
-        db_name.replace('`', "``")
+        "SELECT `value` FROM {}.`config` WHERE `key` = 'status.custom'",
+        quoted_db(db_name)
     )
 }
 
@@ -426,11 +507,7 @@ pub async fn discover_database_on_port(port: u16) -> Result<String, DoltError> {
 
     // Try each database — look for one with an `issues` table
     for db_name in &db_names {
-        let query = format!(
-            "SELECT COUNT(*) FROM `{}`.`issues` LIMIT 1",
-            db_name.replace('`', "``")
-        );
-        match conn.query_first::<i64, _>(&query).await {
+        match conn.query_first::<i64, _>(count_issues_query(db_name)).await {
             Ok(Some(_)) => {
                 tracing::info!("Discovered beads database '{}' on port {}", db_name, port);
                 drop(conn);
@@ -515,8 +592,32 @@ fn issues_query(db_name: &str, has_defer_until: bool) -> String {
          DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%sZ') AS updated_at, \
          DATE_FORMAT(closed_at, '%Y-%m-%dT%H:%i:%sZ') AS closed_at, \
          close_reason, {} \
-         FROM `{}`.issues",
-        defer_until, db_name
+         FROM {}.issues",
+        defer_until, quoted_db(db_name)
+    )
+}
+
+/// Probe used to find the beads database among the server's databases.
+fn count_issues_query(db_name: &str) -> String {
+    format!("SELECT COUNT(*) FROM {}.`issues` LIMIT 1", quoted_db(db_name))
+}
+
+/// The `SELECT` for [`merge_comments`].
+fn comments_query(db_name: &str) -> String {
+    format!(
+        "SELECT id, issue_id, author, text, \
+         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
+         FROM {}.comments ORDER BY issue_id, id",
+        quoted_db(db_name)
+    )
+}
+
+/// The `SELECT` for [`merge_dependencies`]; `depends_on` is the column name
+/// read from the live schema (one of two known names).
+fn dependencies_query(db_name: &str, depends_on: &str) -> String {
+    format!(
+        "SELECT issue_id, `{}` AS depends_on, `type` FROM {}.dependencies",
+        depends_on, quoted_db(db_name)
     )
 }
 
@@ -554,13 +655,7 @@ async fn merge_comments(
     db_name: &str,
     mut beads: Vec<Bead>,
 ) -> Result<Vec<Bead>, DoltError> {
-    let query = format!(
-        "SELECT id, issue_id, author, text, \
-         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at \
-         FROM `{}`.comments ORDER BY issue_id, id",
-        db_name
-    );
-    let rows: Vec<Row> = conn.query(&query).await
+    let rows: Vec<Row> = conn.query(comments_query(db_name)).await
         .map_err(|e| DoltError::QueryFailed(format!("comments: {}", e)))?;
 
     let mut map: HashMap<String, Vec<Comment>> = HashMap::new();
@@ -653,8 +748,8 @@ fn build_dependency_insert(db_name: &str, schema: &DependencySchema) -> String {
 /// Assembles `INSERT INTO \`db\`.table (cols) VALUES (vals)` with quoted columns.
 fn format_insert(db_name: &str, table: &str, columns: &[&str], values: &[&str]) -> String {
     format!(
-        "INSERT INTO `{}`.{} ({}) VALUES ({})",
-        db_name,
+        "INSERT INTO {}.{} ({}) VALUES ({})",
+        quoted_db(db_name),
         table,
         columns.iter().map(|c| format!("`{}`", c)).collect::<Vec<_>>().join(", "),
         values.join(", "),
@@ -700,11 +795,7 @@ async fn merge_dependencies(
     beads: &mut [Bead],
 ) -> Result<(), DoltError> {
     let schema = dependency_schema(conn, db_name).await?;
-    let query = format!(
-        "SELECT issue_id, `{}` AS depends_on, `type` FROM `{}`.dependencies",
-        schema.depends_on, db_name
-    );
-    let rows: Vec<Row> = conn.query(&query).await
+    let rows: Vec<Row> = conn.query(dependencies_query(db_name, &schema.depends_on)).await
         .map_err(|e| DoltError::QueryFailed(format!("dependencies: {}", e)))?;
 
     let mut parent_map: HashMap<String, String> = HashMap::new();
@@ -974,6 +1065,41 @@ mod tests {
         let obj = parsed.as_object().unwrap();
         assert_eq!(obj.len(), 2);
     }
+    // ── database name in SQL text ───────────────────────────────────────
+
+    #[test]
+    fn test_quoted_db_wraps_a_plain_name() {
+        assert_eq!(quoted_db("beads_x"), "`beads_x`");
+    }
+
+    #[test]
+    fn test_quoted_db_doubles_backticks_inside() {
+        // The name comes from the page's dolt://… path.
+        assert_eq!(quoted_db("a`b"), "`a``b`");
+        assert_eq!(quoted_db("x`; DROP DATABASE y; --"), "`x``; DROP DATABASE y; --`");
+    }
+
+    #[test]
+    fn test_every_statement_builder_quotes_the_db_name() {
+        let schema = DependencySchema { depends_on: "depends_on_id".to_string(), has_id: false };
+        let built = [
+            issues_query("a`b", true),
+            issues_query("a`b", false),
+            comments_query("a`b"),
+            dependencies_query("a`b", "depends_on_id"),
+            count_issues_query("a`b"),
+            update_statement("a`b", &["title = :title".to_string()]),
+            build_issue_insert("a`b", &[]),
+            build_dependency_insert("a`b", &schema),
+            close_statement("a`b", "x-1", "r", "2026-09-29 10:00:00").0,
+            status_custom_query("a`b"),
+        ];
+        for query in built {
+            assert!(query.contains("`a``b`."), "name not quoted in {}", query);
+        }
+        assert_eq!(use_statement("a`b"), "USE `a``b`");
+    }
+
     // ── create_bead statement builders ──────────────────────────────────
 
     #[test]
@@ -1106,12 +1232,83 @@ mod tests {
             ..Default::default()
         };
         let sets = set_clauses(&update);
-        assert_eq!(sets, vec!["status = :status", "issue_type = :issue_type", "defer_until = NULL"]);
+        assert_eq!(
+            sets,
+            vec![
+                "status = :status",
+                "issue_type = :issue_type",
+                "closed_at = NULL",
+                "close_reason = ''",
+                "defer_until = NULL"
+            ]
+        );
     }
 
     #[test]
     fn test_update_sets_without_defer_do_not_touch_it() {
         let update = BeadUpdate { title: Some("T"), ..Default::default() };
         assert_eq!(set_clauses(&update), vec!["title = :title"]);
+    }
+
+    // ── closing over SQL ────────────────────────────────────────────────
+
+    #[test]
+    fn test_update_sets_status_closed_stamps_closed_at() {
+        // bd 1.3.0: `bd update --status closed` sets closed_at, no reason.
+        let update = BeadUpdate { status: Some("closed"), ..Default::default() };
+        assert_eq!(set_clauses(&update), vec!["status = :status", "closed_at = :now"]);
+    }
+
+    #[test]
+    fn test_update_sets_other_status_clears_closed_at_and_reason() {
+        // bd 1.3.0: moving a closed bead to any other status drops both.
+        let update = BeadUpdate { status: Some("in_progress"), ..Default::default() };
+        assert_eq!(
+            set_clauses(&update),
+            vec!["status = :status", "closed_at = NULL", "close_reason = ''"]
+        );
+    }
+
+    fn param_names(params: &NamedParams) -> Vec<String> {
+        params.iter().map(|(name, _)| String::from_utf8(name.clone()).unwrap()).collect()
+    }
+
+    #[test]
+    fn test_close_statement_uses_parameters_only() {
+        let (query, params) = close_statement("beads_x", "x-1", "dup", "2026-09-29 10:00:00");
+        assert_eq!(
+            query,
+            "UPDATE `beads_x`.issues SET status = 'closed', closed_at = :now, \
+             close_reason = :reason, updated_at = :now WHERE id = :id"
+        );
+        assert_eq!(param_names(&params), vec!["now", "reason", "id"]);
+        assert_eq!(params[1].1, mysql_async::Value::from("dup"));
+        assert_eq!(params[2].1, mysql_async::Value::from("x-1"));
+    }
+
+    #[test]
+    fn test_close_statement_keeps_a_hostile_reason_out_of_the_text() {
+        let reason = "'; DROP TABLE issues; --";
+        let (query, params) = close_statement("a`b", "x-1", reason, "2026-09-29 10:00:00");
+        assert!(query.starts_with("UPDATE `a``b`.issues SET"));
+        assert!(!query.contains("DROP"));
+        assert_eq!(params[1].1, mysql_async::Value::from(reason));
+    }
+
+    #[test]
+    fn test_commit_statement_doubles_quotes_in_the_id() {
+        assert_eq!(commit_statement("close", "x-1"), "CALL DOLT_COMMIT('-Am', 'web-ui: close x-1')");
+        assert_eq!(
+            commit_statement("close", "x'); DROP"),
+            "CALL DOLT_COMMIT('-Am', 'web-ui: close x''); DROP')"
+        );
+        assert_eq!(commit_statement("update", "a\\b"), "CALL DOLT_COMMIT('-Am', 'web-ui: update a\\\\b')");
+    }
+
+    #[test]
+    fn test_sql_close_reason_blank_becomes_bds_default() {
+        // bd 1.3.0 writes "Closed" when `bd close` gets no reason.
+        assert_eq!(sql_close_reason(None), "Closed");
+        assert_eq!(sql_close_reason(Some("dup")), "dup");
     }
 }

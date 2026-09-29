@@ -188,6 +188,16 @@ export const beads = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  /**
+   * Close a bead. `path` is a project folder (the server runs `bd close`) or
+   * `dolt://db` (closed over SQL). A blank or missing `reason` means none.
+   */
+  close: (data: { path: string; id: string; reason?: string }) =>
+    fetchApi<{ success: boolean }>('/api/beads/close', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 /**

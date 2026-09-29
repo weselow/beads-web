@@ -23,10 +23,6 @@ export interface IdeasPanelProps {
   statuses: readonly StatusInfo[];
   /** Project path the beads API takes (a folder or dolt://). */
   projectPath: string;
-  /** Project folder bd runs in; empty for a dolt-only project. */
-  fsPath: string;
-  /** Dolt-only project: no folder, so Dismiss (bd close) is off. */
-  isDoltOnly: boolean;
   /** Board shows an old copy: capture and actions are off. */
   readOnly: boolean;
   /** Open the bead's detail panel. */
@@ -39,7 +35,6 @@ interface ListProps {
   now: Date;
   actions: IdeaActions;
   readOnly: boolean;
-  canDismiss: boolean;
   onOpen: (bead: Bead) => void;
 }
 
@@ -107,13 +102,13 @@ function EmptyIdeas() {
  * one line, then promote it to work, defer it, or dismiss it.
  */
 export function IdeasPanel(props: IdeasPanelProps) {
-  const { open, onOpenChange, beads, statuses, projectPath, fsPath, isDoltOnly, readOnly, onOpenBead, onChanged } = props;
-  const actions = useIdeaActions({ projectPath, fsPath, onChanged });
+  const { open, onOpenChange, beads, statuses, projectPath, readOnly, onOpenBead, onChanged } = props;
+  const actions = useIdeaActions({ projectPath, onChanged });
   // Recomputed on every render: a pass over the beads is cheap, and an idea
   // whose defer date has passed returns to the main list on the next render.
   const now = new Date();
   const { active, deferred } = splitIdeas(beads, statuses, now);
-  const listProps: ListProps = { now, actions, readOnly, canDismiss: !isDoltOnly && !!fsPath, onOpen: onOpenBead };
+  const listProps: ListProps = { now, actions, readOnly, onOpen: onOpenBead };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
