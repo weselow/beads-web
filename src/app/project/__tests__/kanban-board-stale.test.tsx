@@ -181,3 +181,15 @@ describe('Kanban board columns', () => {
     ]);
   });
 });
+
+describe('Kanban board header', () => {
+  it('lets only the project name shrink, so a long name is cut instead of pushing past the edge', () => {
+    render(<KanbanBoard />);
+
+    const title = screen.getByRole('heading', { level: 1, name: 'Demo Project' });
+    // A flex item keeps min-width:auto without min-w-0, and truncate never cuts.
+    expect(title).toHaveClass('min-w-0', 'truncate');
+    expect(screen.getByRole('link', { name: 'Back to projects' })).toHaveClass('shrink-0');
+    expect(screen.getByRole('button', { name: 'Project settings' })).toHaveClass('shrink-0');
+  });
+});
