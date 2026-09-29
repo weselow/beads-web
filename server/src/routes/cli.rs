@@ -33,6 +33,14 @@ pub struct BdCommandResponse {
     pub code: i32,
 }
 
+/// The bd process for a request: each argument goes to bd as it is, with no
+/// shell in between, so a close reason with spaces or quotes stays whole.
+fn bd_command_line(bd_path: &Path, args: &[String], cwd: &Path) -> Command {
+    let mut cmd = Command::new(bd_path);
+    cmd.args(args).current_dir(cwd);
+    cmd
+}
+
 /// Execute a bd command with the provided arguments.
 ///
 /// # Security
@@ -112,8 +120,7 @@ pub async fn bd_command(Json(req): Json<BdCommandRequest>) -> impl IntoResponse 
             ).into_response();
         }
     };
-    let mut cmd = Command::new(bd_path);
-    cmd.args(&req.args).current_dir(&cwd);
+    let mut cmd = bd_command_line(bd_path, &req.args, &cwd);
 
     let result = tokio::time::timeout(Duration::from_secs(30), cmd.output()).await;
 
@@ -155,6 +162,18 @@ mod tests {
         assert!(ALLOWED_COMMANDS.contains(&"update"));
         assert!(ALLOWED_COMMANDS.contains(&"close"));
         assert!(ALLOWED_COMMANDS.contains(&"create"));
+    }
+
+    #[test]
+    fn test_close_reason_goes_to_bd_as_one_argument() {
+        // No shell in between: spaces, quotes and `;` reach bd untouched.
+        let args: Vec<String> = ["close", "x-1", "--reason=не нужно; \"rm -rf\""]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let cmd = bd_command_line(Path::new("bd"), &args, Path::new("."));
+        let passed: Vec<_> = cmd.as_std().get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(passed, args);
     }
 
     #[test]

@@ -179,7 +179,11 @@ export const beads = {
     body: JSON.stringify(data),
   }),
 
-  update: (data: { path: string; id: string; title?: string; description?: string; status?: string; issue_type?: string; priority?: number }) =>
+  /**
+   * `defer`: a date like `2026-10-10` defers the bead (bd sets status
+   * `deferred`), an empty string clears it (back to `open`).
+   */
+  update: (data: { path: string; id: string; title?: string; description?: string; status?: string; issue_type?: string; priority?: number; defer?: string }) =>
     fetchApi<{ success: boolean }>('/api/beads/update', {
       method: 'PATCH',
       body: JSON.stringify(data),

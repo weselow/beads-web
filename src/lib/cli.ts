@@ -137,19 +137,23 @@ export async function updateDescription(
 /**
  * Close a bead
  *
- * Executes: bd close <beadId>
+ * Executes: bd close <beadId> [--reason=<reason>]
  *
  * @param beadId - The ID of the bead to close
  * @param cwd - Working directory (project path)
+ * @param reason - Why it is closed; kept by bd as close_reason. Blank is left out.
  * @throws Error if command fails
  *
  * @example
  * ```typescript
- * await closeBead('BD-001', '/path/to/project');
+ * await closeBead('BD-001', '/path/to/project', 'Duplicate of BD-002');
  * ```
  */
-export async function closeBead(beadId: string, cwd?: string): Promise<void> {
-  const result = await executeBdCommand(["close", beadId], cwd);
+export async function closeBead(beadId: string, cwd?: string, reason?: string): Promise<void> {
+  const args = ["close", beadId];
+  // Glued to the flag, so a reason starting with "-" is not read as a flag.
+  if (reason?.trim()) args.push(`--reason=${reason}`);
+  const result = await executeBdCommand(args, cwd);
 
   if (!result.success) {
     throw new Error(result.stderr || `Failed to close bead: exit code ${result.code}`);
