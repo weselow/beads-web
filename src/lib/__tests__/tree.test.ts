@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { BUILTIN_STATUSES } from '@/lib/statuses';
-import { buildTree, flattenVisible, matchTreeTypes, parentIds, type BuildTreeOptions, type TreeNode } from '@/lib/tree';
+import {
+  buildTree, flattenVisible, keepSelection, matchTreeTypes, parentIds, treeStep,
+  type BuildTreeOptions, type TreeNode, type TreeStep,
+} from '@/lib/tree';
 import type { Bead, StatusInfo } from '@/types';
 
 const statuses: StatusInfo[] = [...BUILTIN_STATUSES, { name: 'shipped', category: 'done', builtin: false }];
@@ -183,5 +186,79 @@ describe('parentIds', () => {
   it('lists every node that has children, at any depth', () => {
     const beads = [bead('a'), bead('b', { parent_id: 'a' }), bead('c', { parent_id: 'b' }), bead('d')];
     expect(parentIds(build(beads)).toSorted()).toEqual(['a', 'b']);
+  });
+});
+
+// m ─┬─ e1 ── t1        (three levels)
+//    └─ e2
+// r
+const navBeads = [
+  bead('m'), bead('e1', { parent_id: 'm' }), bead('t1', { parent_id: 'e1' }), bead('e2', { parent_id: 'm' }), bead('r'),
+];
+
+/** The step from `selected` with the given rows collapsed. */
+function step(selected: string | null, key: TreeStep, folded: string[] = []) {
+  const collapsed = new Set(folded);
+  return treeStep(flattenVisible(build(navBeads), collapsed), collapsed, selected, key);
+}
+
+describe('treeStep', () => {
+  it('moves up and down over the visible rows only', () => {
+    expect(step('m', 'down')).toEqual({ select: 'e1' });
+    expect(step('t1', 'down')).toEqual({ select: 'e2' });
+    expect(step('e1', 'down', ['e1'])).toEqual({ select: 'e2' });
+    expect(step('r', 'up', ['m'])).toEqual({ select: 'm' });
+    expect(step('e2', 'up')).toEqual({ select: 't1' });
+  });
+
+  it('stops at the first and the last row', () => {
+    expect(step('m', 'up')).toBeNull();
+    expect(step('r', 'down')).toBeNull();
+  });
+
+  it('starts at the first row going down and at the last going up', () => {
+    expect(step(null, 'down')).toEqual({ select: 'm' });
+    expect(step(null, 'up')).toEqual({ select: 'r' });
+    expect(step('gone', 'down')).toEqual({ select: 'm' });
+  });
+
+  it('right expands a collapsed row, then goes to its first child; a leaf stays', () => {
+    expect(step('e1', 'right', ['e1'])).toEqual({ toggle: 'e1' });
+    expect(step('m', 'right')).toEqual({ select: 'e1' });
+    expect(step('t1', 'right')).toBeNull();
+  });
+
+  it('left collapses an expanded row, otherwise goes to the parent', () => {
+    expect(step('e1', 'left')).toEqual({ toggle: 'e1' });
+    expect(step('e1', 'left', ['e1'])).toEqual({ select: 'm' });
+    expect(step('t1', 'left')).toEqual({ select: 'e1' });
+    expect(step('e2', 'left')).toEqual({ select: 'm' });
+  });
+
+  it('left on a root without children and sideways without a selection do nothing', () => {
+    expect(step('r', 'left')).toBeNull();
+    expect(step(null, 'left')).toBeNull();
+    expect(step(null, 'right')).toBeNull();
+  });
+});
+
+describe('keepSelection', () => {
+  const keep = (selected: string | null, folded: string[], beads = navBeads) => {
+    const roots = build(beads);
+    return keepSelection(roots, flattenVisible(roots, new Set(folded)), selected);
+  };
+
+  it('keeps a row that is still on screen', () => {
+    expect(keep('t1', [])).toBe('t1');
+    expect(keep(null, [])).toBeNull();
+  });
+
+  it('moves to the collapsed ancestor that hides the row', () => {
+    expect(keep('t1', ['e1'])).toBe('e1');
+    expect(keep('t1', ['m', 'e1'])).toBe('m');
+  });
+
+  it('drops a row that left the tree', () => {
+    expect(keep('t1', [], navBeads.filter((b) => b.id !== 't1'))).toBeNull();
   });
 });
