@@ -20,10 +20,16 @@ export interface TreeRowProps {
   node: TreeNode;
   /** Its children are on screen; ignored for a row without children. */
   expanded: boolean;
+  /** The picked row: highlighted, the one Tab reaches. */
+  selected: boolean;
+  /** Tab reaches it: the picked row, or the first one while nothing is picked. */
+  tabbable: boolean;
   ticketNumber?: number;
   statuses: readonly StatusInfo[];
   onToggle: (id: string) => void;
   onOpenBead: (bead: Bead) => void;
+  /** Focus anywhere in the row (a click, Tab) picks it. */
+  onSelect: (id: string) => void;
 }
 
 /** Arrow that folds the row's children; an empty slot of the same width when it has none. */
@@ -102,15 +108,25 @@ function RowMarks({ node, statuses }: { node: TreeNode; statuses: readonly Statu
  * One flat row of the tree, indented by depth. The arrow and the title are
  * separate buttons, so folding a row never opens its bead.
  */
-export const TreeRow = memo(function TreeRow({ node, expanded, ticketNumber, statuses, onToggle, onOpenBead }: TreeRowProps) {
+export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
+  const { node, expanded, selected, tabbable, ticketNumber, statuses, onToggle, onOpenBead, onSelect } = props;
   const { bead } = node;
+  const hasChildren = node.children.length > 0;
   return (
     <li
+      role="treeitem"
+      aria-level={node.depth + 1}
+      aria-expanded={hasChildren ? expanded : undefined}
+      aria-selected={selected}
+      tabIndex={tabbable ? 0 : -1}
+      onFocus={() => onSelect(bead.id)}
       data-bead-id={bead.id}
       data-depth={node.depth}
       className={cn(
         "flex h-8 items-center gap-2 pr-3 text-sm hover:bg-surface-overlay/50",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-t-tertiary",
         "[content-visibility:auto] [contain-intrinsic-size:auto_2rem]",
+        selected && "bg-info/5 outline outline-1 -outline-offset-1 outline-info/40",
         !node.matched && "opacity-60"
       )}
       style={{ paddingLeft: `${0.5 + node.depth * 1.25}rem` }}

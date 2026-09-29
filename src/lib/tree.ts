@@ -213,6 +213,69 @@ export function flattenVisible(roots: readonly TreeNode[], collapsed: ReadonlySe
   return rows;
 }
 
+/** An arrow key in the tree. */
+export type TreeStep = "up" | "down" | "right" | "left";
+
+/** What an arrow key does: pick another row, fold or unfold a row, or nothing. */
+export type TreeMove = { select: string } | { toggle: string } | null;
+
+const selectRow = (node: TreeNode | undefined): TreeMove => (node ? { select: node.bead.id } : null);
+
+/** Nearest row above that is one level up: the parent on screen. */
+function parentRow(rows: readonly TreeNode[], index: number): TreeNode | undefined {
+  const depth = rows[index].depth;
+  return rows.slice(0, index).findLast((node) => node.depth === depth - 1);
+}
+
+/**
+ * The tree's arrow keys over the rows on screen. Up and down go to the next
+ * row, starting at the first or the last when nothing is picked. Right unfolds
+ * a folded row, then goes to its first child. Left folds an unfolded row,
+ * otherwise goes to the parent.
+ */
+export function treeStep(
+  rows: readonly TreeNode[], collapsed: ReadonlySet<string>, selectedId: string | null, step: TreeStep
+): TreeMove {
+  const index = rows.findIndex((node) => node.bead.id === selectedId);
+  if (step === "down") return selectRow(index < 0 ? rows[0] : rows[index + 1]);
+  if (step === "up") return selectRow(index < 0 ? rows.at(-1) : rows[index - 1]);
+  return index < 0 ? null : sideStep(rows, index, collapsed, step);
+}
+
+/** Right or left on a picked row. */
+function sideStep(rows: readonly TreeNode[], index: number, collapsed: ReadonlySet<string>, step: TreeStep): TreeMove {
+  const node = rows[index];
+  const hasChildren = node.children.length > 0;
+  const open = hasChildren && !collapsed.has(node.bead.id);
+  if (step === "right") {
+    if (!hasChildren) return null;
+    return open ? selectRow(node.children[0]) : { toggle: node.bead.id };
+  }
+  return open ? { toggle: node.bead.id } : selectRow(parentRow(rows, index));
+}
+
+/** Ids from a root down to the bead, the bead included; empty when it is not in the tree. */
+function pathTo(roots: readonly TreeNode[], id: string): string[] {
+  const stack = roots.map((node) => ({ node, path: [node.bead.id] }));
+  while (stack.length > 0) {
+    const { node, path } = stack.pop()!;
+    if (node.bead.id === id) return path;
+    stack.push(...node.children.map((child) => ({ node: child, path: [...path, child.bead.id] })));
+  }
+  return [];
+}
+
+/**
+ * The picked row after the rows changed. A row hidden by a folded ancestor
+ * hands the pick to that ancestor; a row gone from the tree drops it.
+ */
+export function keepSelection(roots: readonly TreeNode[], rows: readonly TreeNode[], selectedId: string | null): string | null {
+  if (selectedId === null) return null;
+  const onScreen = new Set(rows.map((node) => node.bead.id));
+  if (onScreen.has(selectedId)) return selectedId;
+  return pathTo(roots, selectedId).findLast((id) => onScreen.has(id)) ?? null;
+}
+
 /** Ids of every node that has children: what Collapse all folds. */
 export function parentIds(roots: readonly TreeNode[]): string[] {
   const ids: string[] = [];

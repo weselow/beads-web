@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type RefObject } from "react";
 
 import { ChevronsDownUp, ChevronsUpDown, PackageOpen } from "lucide-react";
 
 import { TreeRow } from "@/components/tree-row";
 import { Button } from "@/components/ui/button";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
+import { useTreeKeyboard } from "@/hooks/use-tree-keyboard";
 import { useTreeState } from "@/hooks/use-tree-state";
 import { buildTree, flattenVisible, parentIds, type TreeNode } from "@/lib/tree";
 import type { Bead, StatusInfo } from "@/types";
@@ -23,6 +24,10 @@ export interface TreeViewProps {
   /** Order of siblings, the board's sort */
   compare: (a: Bead, b: Bead) => number;
   onOpenBead: (bead: Bead) => void;
+  /** The bead card is open: the tree's keys wait, Escape is the card's. */
+  isDetailOpen?: boolean;
+  /** The filter bar's search box, for the / key */
+  searchInputRef?: RefObject<HTMLInputElement | null>;
 }
 
 interface TreeToolbarProps {
@@ -64,24 +69,34 @@ function EmptyTree({ showClosed }: { showClosed: boolean }) {
 interface TreeRowsProps extends Pick<TreeViewProps, "ticketNumbers" | "statuses" | "onOpenBead"> {
   rows: readonly TreeNode[];
   collapsed: ReadonlySet<string>;
+  selectedId: string | null;
+  listRef: RefObject<HTMLUListElement>;
   onToggle: (id: string) => void;
+  onSelect: (id: string) => void;
 }
 
-/** The visible rows; memoised rows redraw only when their own node or state changes. */
-function TreeRows({ rows, collapsed, ticketNumbers, statuses, onToggle, onOpenBead }: TreeRowsProps) {
+/**
+ * The visible rows; memoised rows redraw only when their own node or state
+ * changes, so moving the pick redraws two rows, not all of them.
+ */
+function TreeRows({ rows, collapsed, selectedId, listRef, ticketNumbers, statuses, ...handlers }: TreeRowsProps) {
   return (
-    <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-      {rows.map((node) => (
-        <TreeRow
-          key={node.bead.id}
-          node={node}
-          expanded={!collapsed.has(node.bead.id)}
-          ticketNumber={ticketNumbers.get(node.bead.id)}
-          statuses={statuses}
-          onToggle={onToggle}
-          onOpenBead={onOpenBead}
-        />
-      ))}
+    <ul ref={listRef} role="tree" aria-label="Bead tree" className="min-h-0 flex-1 overflow-y-auto py-1">
+      {rows.map((node, index) => {
+        const selected = node.bead.id === selectedId;
+        return (
+          <TreeRow
+            key={node.bead.id}
+            node={node}
+            expanded={!collapsed.has(node.bead.id)}
+            selected={selected}
+            tabbable={selected || (selectedId === null && index === 0)}
+            ticketNumber={ticketNumbers.get(node.bead.id)}
+            statuses={statuses}
+            {...handlers}
+          />
+        );
+      })}
     </ul>
   );
 }
@@ -90,16 +105,21 @@ function TreeRows({ rows, collapsed, ticketNumbers, statuses, onToggle, onOpenBe
  * The project's beads as a tree: milestones, epics, tasks and subtasks at any
  * depth. Everything starts expanded; the rows the user folds are remembered.
  */
-export function TreeView({ projectId, beads, matchedIds, statuses, ticketNumbers, compare, onOpenBead }: TreeViewProps) {
+export function TreeView(props: TreeViewProps) {
+  const { projectId, beads, matchedIds, statuses, ticketNumbers, compare, onOpenBead } = props;
   const { collapsed, showClosed, toggleCollapsed, setCollapsed, setShowClosed } = useTreeState(projectId);
   const roots = useMemo(
     () => buildTree(beads, statuses, { matchedIds, showClosed, compare }),
     [beads, matchedIds, statuses, showClosed, compare]
   );
   const rows = useMemo(() => flattenVisible(roots, collapsed), [roots, collapsed]);
+  const { selectedId, pick, listRef } = useTreeKeyboard({
+    roots, rows, collapsed, onToggle: toggleCollapsed, onOpenBead,
+    isDetailOpen: props.isDetailOpen ?? false, searchInputRef: props.searchInputRef,
+  });
 
   return (
-    <section aria-label="Bead tree" className="flex min-h-0 flex-1 flex-col">
+    <section aria-label="Tree view" className="flex min-h-0 flex-1 flex-col">
       <TreeToolbar
         showClosed={showClosed}
         onShowClosedChange={setShowClosed}
@@ -107,8 +127,9 @@ export function TreeView({ projectId, beads, matchedIds, statuses, ticketNumbers
         onCollapseAll={() => setCollapsed(parentIds(roots))}
       />
       {rows.length === 0 ? <EmptyTree showClosed={showClosed} /> : (
-        <TreeRows rows={rows} collapsed={collapsed} ticketNumbers={ticketNumbers} statuses={statuses}
-          onToggle={toggleCollapsed} onOpenBead={onOpenBead} />
+        <TreeRows rows={rows} collapsed={collapsed} selectedId={selectedId} listRef={listRef}
+          ticketNumbers={ticketNumbers} statuses={statuses}
+          onToggle={toggleCollapsed} onOpenBead={onOpenBead} onSelect={pick} />
       )}
     </section>
   );

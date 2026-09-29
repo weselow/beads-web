@@ -1,4 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { createRef } from 'react';
+
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { compareBeads } from '@/lib/bead-sort';
@@ -42,8 +44,8 @@ function renderTree(props: Partial<TreeViewProps> = {}) {
   return { ...view, onOpenBead };
 }
 
-const titles = () => screen.queryAllByRole('listitem').map((row) => row.getAttribute('data-bead-id'));
-const row = (id: string) => screen.getAllByRole('listitem').find((r) => r.getAttribute('data-bead-id') === id)!;
+const titles = () => screen.queryAllByRole('treeitem').map((row) => row.getAttribute('data-bead-id'));
+const row = (id: string) => screen.getAllByRole('treeitem').find((r) => r.getAttribute('data-bead-id') === id)!;
 
 /** In-memory Storage: Node 25 puts its own empty localStorage over jsdom's. */
 function memoryStorage(): Storage {
@@ -68,7 +70,7 @@ describe('TreeView rows', () => {
   it('draws the nesting as flat rows indented by depth, closed beads hidden', () => {
     renderTree();
     expect(titles()).toEqual(['p-e1', 'p-t1', 'p-s1', 'p-r1']);
-    expect(screen.getAllByRole('listitem').map((r) => r.getAttribute('data-depth'))).toEqual(['0', '1', '2', '0']);
+    expect(screen.getAllByRole('treeitem').map((r) => r.getAttribute('data-depth'))).toEqual(['0', '1', '2', '0']);
   });
 
   it('shows number, status, priority and done/total of the children', () => {
@@ -105,7 +107,7 @@ describe('TreeView rows', () => {
   it('shows a placeholder when nothing passed the filters', () => {
     renderTree({ matchedIds: new Set() });
     expect(screen.getByText('No beads match the filters')).toBeInTheDocument();
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.queryAllByRole('treeitem')).toHaveLength(0);
   });
 });
 
@@ -171,5 +173,113 @@ describe('TreeView memory', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Epic' }));
     expect(titles()).toEqual(['p-e1', 'p-r1']);
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+const press = (key: string, target: Element | Window = window) => act(() => { fireEvent.keyDown(target, { key }); });
+const picked = () => screen.queryAllByRole('treeitem').filter((r) => r.getAttribute('aria-selected') === 'true')
+  .map((r) => r.getAttribute('data-bead-id'));
+
+describe('TreeView roles', () => {
+  it('marks up a tree with levels, and expanded state only on rows with children', () => {
+    renderTree();
+    expect(screen.getByRole('tree', { name: 'Bead tree' })).toBeInTheDocument();
+    expect(screen.getAllByRole('treeitem').map((r) => r.getAttribute('aria-level'))).toEqual(['1', '2', '3', '1']);
+    expect(row('p-e1')).toHaveAttribute('aria-expanded', 'true');
+    expect(row('p-r1')).not.toHaveAttribute('aria-expanded');
+    expect(picked()).toEqual([]);
+  });
+
+  it('lets Tab reach the first row until a row is picked, then only the picked one', () => {
+    renderTree();
+    expect(screen.getAllByRole('treeitem').map((r) => r.tabIndex)).toEqual([0, -1, -1, -1]);
+    press('ArrowUp');
+    expect(screen.getAllByRole('treeitem').map((r) => r.tabIndex)).toEqual([-1, -1, -1, 0]);
+  });
+
+  it('picks a row that gets focus, as on a click', () => {
+    renderTree();
+    act(() => row('p-t1').focus());
+    expect(picked()).toEqual(['p-t1']);
+  });
+});
+
+describe('TreeView keyboard', () => {
+  beforeEach(() => { Element.prototype.scrollIntoView = vi.fn(); });
+
+  it('moves the pick with the arrows and j/k, focuses and scrolls to it, opens it with Enter', () => {
+    const { onOpenBead } = renderTree();
+    press('ArrowDown');
+    expect(picked()).toEqual(['p-e1']);
+    expect(row('p-e1')).toHaveFocus();
+    expect(row('p-e1').scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    press('j');
+    press('j');
+    press('k');
+    expect(picked()).toEqual(['p-t1']);
+    press('Enter', row('p-t1'));
+    expect(onOpenBead).toHaveBeenCalledWith(beads[1]);
+  });
+
+  it('folds and unfolds with left and right, and walks the levels', () => {
+    renderTree();
+    press('ArrowDown');
+    press('ArrowLeft');
+    expect(titles()).toEqual(['p-e1', 'p-r1']);
+    press('ArrowRight');
+    expect(titles()).toEqual(['p-e1', 'p-t1', 'p-s1', 'p-r1']);
+    press('ArrowRight');
+    expect(picked()).toEqual(['p-t1']);
+    press('ArrowLeft');
+    expect(titles()).toEqual(['p-e1', 'p-t1', 'p-r1']);
+    press('ArrowLeft');
+    expect(picked()).toEqual(['p-e1']);
+  });
+
+  it('hands the pick to the ancestor that got collapsed, and drops it with Escape', () => {
+    renderTree();
+    press('ArrowDown');
+    press('ArrowDown');
+    press('ArrowDown');
+    expect(picked()).toEqual(['p-s1']);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Epic' }));
+    expect(picked()).toEqual(['p-e1']);
+    press('Escape');
+    expect(picked()).toEqual([]);
+  });
+
+  it('leaves typing in the search box alone; / focuses it and Escape leaves it', () => {
+    const searchInputRef = createRef<HTMLInputElement>();
+    render(<input ref={searchInputRef} aria-label="Search" />);
+    const { onOpenBead } = renderTree({ searchInputRef });
+    press('/');
+    const search = screen.getByRole('textbox', { name: 'Search' });
+    expect(search).toHaveFocus();
+    ['ArrowDown', 'j', 'ArrowRight', 'Enter'].forEach((key) => press(key, search));
+    expect(picked()).toEqual([]);
+    expect(onOpenBead).not.toHaveBeenCalled();
+    press('Escape', search);
+    expect(search).not.toHaveFocus();
+  });
+
+  it('ignores the keys while the card is open, so Escape only closes the card', () => {
+    const { onOpenBead, rerender } = renderTree();
+    press('ArrowDown');
+    rerender(
+      <TreeView projectId="proj" beads={beads} matchedIds={new Set(beads.map((b) => b.id))} statuses={BUILTIN_STATUSES}
+        ticketNumbers={ticketNumbers} compare={compare} onOpenBead={onOpenBead} isDetailOpen />
+    );
+    ['ArrowDown', 'Enter', 'Escape'].forEach((key) => press(key));
+    expect(picked()).toEqual(['p-e1']);
+    expect(onOpenBead).not.toHaveBeenCalled();
+  });
+
+  it('leaves Alt+arrow to the browser and Enter on a button to the button', () => {
+    const { onOpenBead } = renderTree();
+    act(() => { fireEvent.keyDown(window, { key: 'ArrowDown', altKey: true }); });
+    expect(picked()).toEqual([]);
+    press('ArrowDown');
+    press('Enter', screen.getByRole('button', { name: 'Sub' }));
+    expect(onOpenBead).not.toHaveBeenCalled();
   });
 });

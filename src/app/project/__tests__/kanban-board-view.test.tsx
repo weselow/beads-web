@@ -138,7 +138,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const tree = () => screen.queryByRole('region', { name: 'Bead tree' });
+const tree = () => screen.queryByRole('region', { name: 'Tree view' });
 const openColumn = () => screen.queryByRole('region', { name: 'Open' });
 const viewButton = (name: 'Board view' | 'Tree view') => screen.getByRole('button', { name });
 
@@ -211,7 +211,7 @@ describe('Board / Tree switch on the project page', () => {
     expect(cardPanel()).toHaveClass('translate-x-0');
   });
 
-  it('keeps the board keys to the board', async () => {
+  it('picks and opens a bead from the keyboard in both views', async () => {
     const pickAndOpen = async () => {
       fireEvent.keyDown(window, { key: 'j' });
       fireEvent.keyDown(window, { key: 'Enter' });
@@ -223,8 +223,9 @@ describe('Board / Tree switch on the project page', () => {
     nav.search = 'id=p1&view=tree';
     const { unmount } = render(<KanbanBoard />);
     await pickAndOpen();
-    // The tree gets keys of its own later; the column keys must not act on it.
-    expect(cardPanel()).toBeFalsy();
+    // The tree's own keys: the board's column keys are not mounted there.
+    expect(within(tree()!).getByRole('treeitem', { selected: true })).toHaveAttribute('data-bead-id', BEAD.id);
+    expect(cardPanel()).toHaveClass('translate-x-0');
     unmount();
 
     nav.search = 'id=p1';
