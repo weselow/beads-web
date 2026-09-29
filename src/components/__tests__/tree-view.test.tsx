@@ -197,6 +197,15 @@ describe('TreeView roles', () => {
     expect(screen.getAllByRole('treeitem').map((r) => r.tabIndex)).toEqual([-1, -1, -1, 0]);
   });
 
+  it('keeps the buttons inside a row out of the Tab order, so the tree is one Tab stop', () => {
+    renderTree();
+    const tree = screen.getByRole('tree');
+    within(tree).getAllByRole('button').forEach((button) => expect(button.tabIndex).toBe(-1));
+    const stops = Array.from(tree.querySelectorAll<HTMLElement>('button, a, input, [tabindex]'))
+      .filter((el) => el.tabIndex >= 0);
+    expect(stops).toEqual([row('p-e1')]);
+  });
+
   it('picks a row that gets focus, as on a click', () => {
     renderTree();
     act(() => row('p-t1').focus());
@@ -219,6 +228,31 @@ describe('TreeView keyboard', () => {
     expect(picked()).toEqual(['p-t1']);
     press('Enter', row('p-t1'));
     expect(onOpenBead).toHaveBeenCalledWith(beads[1]);
+  });
+
+  it('jumps to the first and the last row with Home and End', () => {
+    renderTree();
+    press('End');
+    expect(picked()).toEqual(['p-r1']);
+    expect(row('p-r1')).toHaveFocus();
+    press('Home');
+    expect(picked()).toEqual(['p-e1']);
+    expect(row('p-e1')).toHaveFocus();
+  });
+
+  it('keeps Home and End from scrolling the page in the tree, and leaves them to the search box', () => {
+    const searchInputRef = createRef<HTMLInputElement>();
+    render(<input ref={searchInputRef} aria-label="Search" />);
+    renderTree({ searchInputRef });
+    // fireEvent returns false when the default action (page scroll, caret move) was prevented.
+    let notPrevented = true;
+    act(() => { notPrevented = fireEvent.keyDown(window, { key: 'End' }); });
+    expect(notPrevented).toBe(false);
+    const search = screen.getByRole('textbox', { name: 'Search' });
+    act(() => search.focus());
+    act(() => { notPrevented = fireEvent.keyDown(search, { key: 'Home' }); });
+    expect(notPrevented).toBe(true);
+    expect(picked()).toEqual(['p-r1']);
   });
 
   it('folds and unfolds with left and right, and walks the levels', () => {

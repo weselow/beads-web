@@ -240,6 +240,23 @@ describe('treeStep', () => {
     expect(step(null, 'left')).toBeNull();
     expect(step(null, 'right')).toBeNull();
   });
+
+  it('first and last go to the first and the last visible row', () => {
+    expect(step('t1', 'first')).toEqual({ select: 'm' });
+    expect(step('m', 'last')).toEqual({ select: 'r' });
+    expect(step('r', 'first', ['m'])).toEqual({ select: 'm' });
+    expect(step('m', 'last', ['r'])).toEqual({ select: 'r' });
+  });
+
+  it('first and last work without a selection', () => {
+    expect(step(null, 'first')).toEqual({ select: 'm' });
+    expect(step(null, 'last')).toEqual({ select: 'r' });
+  });
+
+  it('first and last do nothing in an empty tree', () => {
+    expect(treeStep([], new Set(), null, 'first')).toBeNull();
+    expect(treeStep([], new Set(), null, 'last')).toBeNull();
+  });
 });
 
 describe('keepSelection', () => {

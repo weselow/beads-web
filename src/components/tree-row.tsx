@@ -39,6 +39,7 @@ function ExpandToggle({ node, expanded, onToggle }: Pick<TreeRowProps, "node" | 
   return (
     <button
       type="button"
+      tabIndex={-1}
       onClick={() => onToggle(node.bead.id)}
       aria-expanded={expanded}
       aria-label={`${expanded ? "Collapse" : "Expand"} ${node.bead.title}`}
@@ -81,6 +82,7 @@ function RowTitle({ bead, done, onOpenBead }: { bead: Bead; done: boolean; onOpe
   return (
     <button
       type="button"
+      tabIndex={-1}
       onClick={() => onOpenBead(bead)}
       className={cn(
         "min-w-0 truncate rounded text-left hover:underline",
@@ -106,7 +108,8 @@ function RowMarks({ node, statuses }: { node: TreeNode; statuses: readonly Statu
 
 /**
  * One flat row of the tree, indented by depth. The arrow and the title are
- * separate buttons, so folding a row never opens its bead.
+ * separate buttons, so folding a row never opens its bead. Tab skips both:
+ * the tree is one Tab stop, and keys work the row (Enter opens, right/left fold).
  */
 export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
   const { node, expanded, selected, tabbable, ticketNumber, statuses, onToggle, onOpenBead, onSelect } = props;
