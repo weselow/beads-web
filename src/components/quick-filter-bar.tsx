@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { Search, X, ArrowUpDown, SlidersHorizontal, BrainCircuit, Bot, AlertTriangle, Plus, Shapes } from 'lucide-react';
+import { Search, X, ArrowUpDown, SlidersHorizontal, BrainCircuit, Bot, AlertTriangle, Plus, Shapes, Lightbulb } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -69,6 +69,12 @@ interface QuickFilterBarProps {
   onClearFilters: () => void;
   /** Whether any filters are active */
   hasActiveFilters: boolean;
+  /** Whether the ideas panel is open */
+  isIdeasOpen?: boolean;
+  /** Callback to toggle the ideas panel */
+  onIdeasToggle?: () => void;
+  /** Open ideas (stories), shown on the Ideas button; hidden at 0 */
+  ideasCount?: number;
   /** Whether the memory panel is open */
   isMemoryOpen?: boolean;
   /** Callback to toggle memory panel */
@@ -119,6 +125,9 @@ export function QuickFilterBar({
   availableOwners,
   onClearFilters,
   hasActiveFilters,
+  isIdeasOpen,
+  onIdeasToggle,
+  ideasCount = 0,
   isMemoryOpen,
   onMemoryToggle,
   isAgentsOpen,
@@ -247,6 +256,29 @@ export function QuickFilterBar({
       >
         Today
       </button>
+
+      {/* Ideas Toggle — works for dolt-only projects too: its writes go through the beads API */}
+      {onIdeasToggle && (
+        <button
+          type="button"
+          onClick={onIdeasToggle}
+          aria-pressed={isIdeasOpen}
+          className={cn(
+            'h-8 px-3 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-raised',
+            isIdeasOpen
+              ? 'bg-success/20 text-success'
+              : 'bg-surface-overlay/50 text-t-tertiary hover:text-t-secondary'
+          )}
+        >
+          <Lightbulb className="size-4" aria-hidden="true" />
+          Ideas
+          {ideasCount > 0 && (
+            <span className="min-w-[1.25rem] rounded-full bg-surface-overlay px-1.5 text-xs tabular-nums text-t-secondary">
+              {ideasCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Memory Toggle */}
       {onMemoryToggle && (
