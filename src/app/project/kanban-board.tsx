@@ -167,7 +167,7 @@ export default function KanbanBoard() {
   /**
    * Filter to only top-level beads (no parent_id)
    * Then apply the issue type filter ("all" or a specific type).
-   * Unknown/missing issue types resolve to "task" via getIssueTypeMeta.
+   * A missing issue type counts as "task"; an unknown one matches only "all".
    * Child tasks should not appear in columns - they appear inside epic cards
    */
   const topLevelBeads = useMemo(() => {
